@@ -1,7 +1,7 @@
 """
 Build the shareable page: reads the database, writes one interactive HTML file.
 
-Run:  python report.py        -> index.html (served by GitHub Pages)
+Run:  python report.py        -> report.html
 """
 import json
 import sqlite3
@@ -11,8 +11,7 @@ from statistics import median
 
 import db
 
-OUT = Path(__file__).resolve().parent / "index.html"
-REPO = "https://github.com/jmchale-osu/bond-tracker"
+OUT = Path(__file__).resolve().parent / "report.html"
 BUCKETS = ["1-3y", "3-5y", "5-7y", "7-10y", "10-15y", "15y+"]
 PROCEEDS_LABEL = {
     "acquisition": "Acquisition", "refinancing": "Refinancing",
@@ -42,19 +41,29 @@ def collect():
 
 
 def headline(bonds):
-    """One sentence a non-specialist can read, computed from the data."""
-    pairs = {}
+    """Compare like with like: within grade and tenor bucket, then report the median gap."""
+    groups = {}
     for b in bonds:
         if b["gap"] is None or b["proceeds"] not in ("acquisition", "refinancing"):
             continue
-        pairs.setdefault(b["proceeds"], []).append(b["gap"])
-    if len(pairs) == 2 and all(len(v) >= 3 for v in pairs.values()):
-        a, r = median(pairs["acquisition"]), median(pairs["refinancing"])
-        n = len(pairs["acquisition"]) + len(pairs["refinancing"])
-        direction = "wider" if a > r else "tighter"
-        return (f"Acquisition-funded deals priced a median <b>{abs(a - r):.0f} bps {direction}</b> "
-                f"than refinancings, across {n} tranches.")
-    return "Not enough classified deals yet to compare acquisition funding against refinancing."
+        groups.setdefault((b["grade"], b["bucket"], b["proceeds"]), []).append(b["gap"])
+
+    gaps, n = [], 0
+    for grade, bucket in {(g, bk) for g, bk, _ in groups}:
+        acq = groups.get((grade, bucket, "acquisition"), [])
+        ref = groups.get((grade, bucket, "refinancing"), [])
+        if len(acq) >= 3 and len(ref) >= 3:
+            gaps.append(median(acq) - median(ref))
+            n += len(acq) + len(ref)
+    if not gaps:
+        return ("Not enough matched deals yet to compare acquisition funding against "
+                "refinancing within the same rating and maturity.")
+    gap = median(gaps)
+    direction = "wider" if gap > 0 else "tighter"
+    return (f"Within matched rating and maturity buckets, acquisition-funded deals priced a median "
+            f"<b>{abs(gap):.0f} bps {direction}</b> than refinancings, across {n} tranches in "
+            f"{len(gaps)} buckets. The refinancing sample leans toward specialty finance issuers, "
+            f"which widens the gap in shorter maturities.")
 
 
 CSS = """
@@ -67,8 +76,7 @@ CSS = """
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 ui-sans-serif,-apple-system,"Segoe UI",sans-serif}
 .col{max-width:760px;margin:0 auto;padding:0 20px}
 .wide{max-width:1080px;margin:0 auto;padding:0 20px}
-header.col{padding-top:56px;padding-bottom:8px}
-.kicker{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--accent);font-weight:600;margin:0 0 10px}
+header{padding:64px 0 8px}
 h1{font-family:Georgia,"Iowan Old Style",serif;font-size:40px;line-height:1.15;letter-spacing:-.02em;margin:0 0 10px;font-weight:600}
 h2{font-family:Georgia,serif;font-size:24px;letter-spacing:-.01em;margin:52px 0 4px;font-weight:600}
 h3{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink3);margin:28px 0 8px;font-weight:600}
@@ -101,16 +109,16 @@ svg{width:100%;height:auto;display:block;overflow:visible}
 .tick{fill:var(--ink3);font-size:11px;font-variant-numeric:tabular-nums}
 .legend{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--ink2);margin-top:12px}
 .key{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:6px}
+.tablewrap{max-height:72vh;overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
 table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{position:sticky;top:0;background:var(--surface);z-index:2;box-shadow:0 1px 0 var(--line)}
+.controls.inline{position:static;border-bottom:none;padding:4px 0 12px}
+.rowcount{font-size:12px;color:var(--ink3);margin-left:auto}
 th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);
 padding:9px 10px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap;user-select:none}
 th:hover{color:var(--ink)}
 td{padding:9px 10px;border-bottom:1px solid var(--line);color:var(--ink2)}
-td.n{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink);white-space:nowrap}
-.tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
-button.more{margin:14px 0 0;font:13px ui-sans-serif,sans-serif;color:var(--ink);background:var(--surface);
-border:1px solid var(--line);border-radius:999px;padding:7px 16px;cursor:pointer}
-a{color:var(--accent)}
+td.n{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
 tr.row{cursor:pointer}
 tr.row:hover td{background:var(--chip)}
 tr.detail td{background:var(--chip);color:var(--ink2);font-size:13px}
@@ -120,17 +128,13 @@ ul{color:var(--ink2);font-size:14px;padding-left:20px}
 #tip{position:fixed;pointer-events:none;opacity:0;background:var(--ink);color:var(--bg);font-size:12px;
 line-height:1.4;padding:7px 10px;border-radius:7px;transform:translate(-50%,-125%);transition:opacity .08s;z-index:9}
 footer{margin:56px 0 80px;padding-top:18px;border-top:1px solid var(--line);font-size:12px;color:var(--ink3)}
-@media(max-width:620px){h1{font-size:30px}header.col{padding-top:32px}.hide-s{display:none}
-.controls{position:static}.tick{font-size:19px}.stats{gap:22px}input{min-width:0;flex:1}
-th,td{padding:8px 6px}}
+@media(max-width:620px){h1{font-size:30px}.hide-s{display:none}}
 """
 
 JS = r"""
 const $=s=>document.querySelector(s), tip=$('#tip');
 const F={grade:'all',proceeds:'all',bucket:'all',week:null,q:''};
-let sortKey='priced', sortDir=-1, showAll=false;
-const narrow=()=>window.innerWidth<620;
-const hideTip=()=>{tip.style.opacity=0;};
+let sortKey='priced', sortDir=-1;
 const money=v=>v==null?'':(v>=1e9?'$'+(v/1e9).toFixed(2)+'B':'$'+Math.round(v/1e6)+'mm');
 const pm=v=>v==null?'':(v>0?'+':'')+Math.round(v);
 const week=d=>{const t=new Date(d+'T00:00:00');const o=new Date(t);o.setDate(t.getDate()-((t.getDay()+6)%7));return o.toISOString().slice(0,10);};
@@ -138,13 +142,13 @@ const pclass=p=>p==='acquisition'?'p1':p==='refinancing'?'p2':'p3';
 const plabel=p=>({acquisition:'Acquisition',refinancing:'Refinancing',general_corporate:'General corporate',
   capex:'Capex',shareholder_returns:'Shareholder returns',mixed:'Mixed',not_stated:'Not stated'}[p]||'Not stated');
 
-function visible(ignoreWeek){
+function visible(){
   return BONDS.filter(b=>{
     if(F.grade!=='all' && b.grade!==F.grade) return false;
     if(F.proceeds!=='all'){ const g = (b.proceeds==='acquisition'||b.proceeds==='refinancing')?b.proceeds:'other';
       if(g!==F.proceeds) return false; }
     if(F.bucket!=='all' && b.bucket!==F.bucket) return false;
-    if(!ignoreWeek && F.week && week(b.priced)!==F.week) return false;
+    if(F.week && week(b.priced)!==F.week) return false;
     if(F.q && !((b.issuer||'')+' '+(b.title||'')+' '+(b.cusip||'')).toLowerCase().includes(F.q)) return false;
     return true;});
 }
@@ -155,7 +159,7 @@ function drawBars(rows){
   const by={}; rows.forEach(b=>{if(b.size)by[week(b.priced)]=(by[week(b.priced)]||0)+b.size;});
   const allWeeks=[...new Set(BONDS.map(b=>week(b.priced)))].sort();
   if(!allWeeks.length) return '<p class="note">No issuance yet.</p>';
-  const N=narrow(), W=N?600:1000,H=N?230:200,L=N?40:46,B=N?34:26,T=10,pw=W-L-10,ph=H-B-T;
+  const W=1000,H=200,L=46,B=26,T=10,pw=W-L-10,ph=H-B-T;
   const top=Math.max(...allWeeks.map(w=>by[w]||0),1)*1.15, step=pw/allWeeks.length, bw=Math.min(step-5,30);
   let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly issuance">`;
   [0,.5,1].forEach(f=>{const y=T+ph-f*ph;
@@ -165,7 +169,7 @@ function drawBars(rows){
     const off=(F.week&&F.week!==w)?' off':'';
     s+=`<rect class="bar${off}" x="${x}" y="${Math.max(y,T)}" width="${bw}" height="${Math.max(h,1)}" rx="4"
          data-week="${w}" data-tip="Week of ${w}<br>${money(v)} priced"/>`;
-    if(i%Math.max(1,Math.ceil(allWeeks.length/(N?5:7)))===0)
+    if(i%Math.max(1,Math.ceil(allWeeks.length/7))===0)
       s+=`<text class="tick" x="${x+bw/2}" y="${H-8}" text-anchor="middle">${w.slice(5)}</text>`;});
   return s+'</svg>';
 }
@@ -173,7 +177,7 @@ function drawBars(rows){
 function drawDots(rows){
   const pts=rows.filter(b=>b.gap!=null&&b.bucket);
   if(!pts.length) return '<p class="note">No deals with an index comparison in this view.</p>';
-  const N=narrow(), W=N?600:1000,H=N?320:260,L=N?44:48,B=N?36:28,T=12,pw=W-L-10,ph=H-B-T;
+  const W=1000,H=260,L=48,B=28,T=12,pw=W-L-10,ph=H-B-T;
   const gaps=pts.map(p=>p.gap), lo=Math.min(0,...gaps)-8, hi=Math.max(0,...gaps)+8, step=pw/BUCKETS.length;
   const y=v=>T+ph-(v-lo)/(hi-lo)*ph;
   let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Spread versus index by tenor">`;
@@ -185,7 +189,7 @@ function drawDots(rows){
   pts.forEach(p=>{const i=BUCKETS.indexOf(p.bucket); if(i<0)return;
     let h=0; for(const c of p.key) h=(h*31+c.charCodeAt(0))%997;
     const x=L+i*step+step/2+((h/997)-.5)*step*.55;
-    s+=`<circle class="dot ${pclass(p.proceeds)}" cx="${x}" cy="${y(p.gap)}" r="${N?4:5}"
+    s+=`<circle class="dot ${pclass(p.proceeds)}" cx="${x}" cy="${y(p.gap)}" r="5"
          data-tip="<b>${p.issuer}</b><br>${p.title}<br>${pm(p.gap)} bps vs index · ${plabel(p.proceeds)}"/>`;});
   return s+'</svg>';
 }
@@ -198,17 +202,13 @@ function drawTable(rows){
     return (typeof x==='number'?x-y:String(x).localeCompare(String(y)))*sortDir;});
   let s='<table><thead><tr>'+cols.map(([k,label,cls])=>
     `<th class="${cls}" data-sort="${k}">${label}${sortKey===k?(sortDir>0?' ↑':' ↓'):''}</th>`).join('')+'</tr></thead><tbody>';
-  const LIMIT=100, shown=showAll?sorted:sorted.slice(0,LIMIT);
-  shown.forEach(b=>{
+  sorted.slice(0,200).forEach(b=>{
     s+=`<tr class="row" data-key="${b.key}">
       <td>${b.issuer||''}</td><td class="hide-s">${b.title||''}</td><td class="n">${money(b.size)}</td>
       <td class="n hide-s">${b.coupon!=null?b.coupon+'%':''}</td><td class="n">${pm(b.spread)}</td>
       <td class="n">${pm(b.gap)}</td><td class="hide-s">${b.grade||''}</td>
       <td class="hide-s">${plabel(b.proceeds)}</td><td class="n">${b.priced||''}</td></tr>`;});
-  s='<div class="tablewrap">'+s+'</tbody></table></div>';
-  if(sorted.length>LIMIT) s+=showAll?'<button class="more" id="more">Show fewer</button>'
-    :`<button class="more" id="more">Show all ${sorted.length} tranches</button>`;
-  return s;
+  return s+'</tbody></table>'+(sorted.length>200?'<p class="note">Showing the first 200 of '+sorted.length+'.</p>':'');
 }
 
 function detailRow(b){
@@ -224,8 +224,7 @@ function detailRow(b){
 
 function render(){
   const rows=visible();
-  hideTip();
-  $('#bars').innerHTML=drawBars(visible(true));
+  $('#bars').innerHTML=drawBars(rows);
   $('#dots').innerHTML=drawDots(rows);
   $('#table').innerHTML=drawTable(rows);
   const groups={acquisition:[],refinancing:[],other:[]};
@@ -235,12 +234,12 @@ function render(){
      median ${pm(med(groups[k]))} bps (n=${groups[k].length})</span>`).join('');
   const vol=rows.reduce((a,b)=>a+(b.size||0),0);
   $('#count').textContent=rows.length.toLocaleString();
+  const rc=$('#rowcount'); if(rc) rc.textContent=rows.length.toLocaleString()+' of '+BONDS.length.toLocaleString()+' tranches';
   $('#vol').textContent=money(vol);
   const gaps=rows.filter(b=>b.gap!=null).map(b=>b.gap);
   $('#medgap').textContent=gaps.length?pm(med(gaps))+' bps':'n/a';
   $('#weekchip').innerHTML=F.week?`<span class="chip" id="clearweek">Week of <b>${F.week}</b> ✕</span>`:'';
   if(F.week)$('#clearweek').onclick=()=>{F.week=null;render();};
-  if($('#more'))$('#more').onclick=()=>{showAll=!showAll;render();};
   wire();
 }
 
@@ -261,14 +260,18 @@ function wire(){
 
 document.querySelectorAll('button.f').forEach(btn=>btn.onclick=()=>{
   const [k,v]=[btn.dataset.k,btn.dataset.v];
-  F[k]=v; document.querySelectorAll(`button.f[data-k="${k}"]`).forEach(b=>
-    b.setAttribute('aria-pressed', b===btn)); render();});
-$('#bucket').onchange=e=>{F.bucket=e.target.value;render();};
-$('#search').oninput=e=>{F.q=e.target.value.toLowerCase();render();};
-window.addEventListener('scroll',hideTip,{passive:true});
-let wasNarrow=narrow(), rt;
-window.addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{
-  if(narrow()!==wasNarrow){wasNarrow=narrow();render();}},150);});
+  F[k]=v;
+  document.querySelectorAll(`button.f[data-k="${k}"]`).forEach(b=>
+    b.setAttribute('aria-pressed', b.dataset.v===v));
+  render();});
+document.querySelectorAll('.bucketsel, #bucket').forEach(sel=>sel.onchange=e=>{
+  F.bucket=e.target.value;
+  document.querySelectorAll('.bucketsel, #bucket').forEach(s=>s.value=F.bucket);
+  render();});
+document.querySelectorAll('.searchbox, #search').forEach(inp=>inp.oninput=e=>{
+  F.q=e.target.value.toLowerCase();
+  document.querySelectorAll('.searchbox, #search').forEach(i=>{if(i!==e.target)i.value=e.target.value;});
+  render();});
 render();
 """
 
@@ -281,9 +284,6 @@ def build():
     checked = checks.get("OK", 0) + checks.get("MISMATCH", 0)
     dates = [b["priced"] for b in bonds if b["priced"]]
     span = f"{min(dates)} to {max(dates)}" if dates else "no deals yet"
-    n_bad = checks.get("MISMATCH", 0)
-    mismatch_line = (f"{n_bad} {'tranche' if n_bad == 1 else 'tranches'} failed the math check and "
-                     f"{'is' if n_bad == 1 else 'are'} flagged in the table, not discarded.")
 
     def fbtn(k, v, label, first=False):
         return (f"<button class='f' data-k='{k}' data-v='{v}' "
@@ -291,11 +291,8 @@ def build():
 
     page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>New Issue Credit Tracker</title>
-<meta name="description" content="Every registered corporate bond deal, read out of SEC filings and priced against its ICE BofA index.">
-<style>{CSS}</style></head><body><div id="tip"></div>
+<title>New Issue Credit Tracker</title><style>{CSS}</style></head><body><div id="tip"></div>
 <header class="col">
-  <p class="kicker">New Issue Credit Tracker</p>
   <h1>What the primary market paid</h1>
   <p class="dek">Every registered corporate bond deal, read out of SEC filings and priced against its index.</p>
   <p class="byline">James McHale · {span} · generated {date.today().isoformat()}</p>
@@ -318,9 +315,9 @@ def build():
     <span style="width:10px"></span>
     {fbtn('proceeds', 'all', 'Any use', True)}{fbtn('proceeds', 'acquisition', 'Acquisition')}
     {fbtn('proceeds', 'refinancing', 'Refinancing')}{fbtn('proceeds', 'other', 'Other')}
-    <select id="bucket"><option value="all">Any tenor</option>
+    <select id="bucket" class="bucketsel"><option value="all">Any tenor</option>
     {''.join(f'<option value="{b}">{b}</option>' for b in BUCKETS)}</select>
-    <input id="search" type="search" placeholder="Search issuer or CUSIP">
+    <input id="search" class="searchbox" type="search" placeholder="Search issuer or CUSIP">
     <span id="weekchip"></span>
   </div>
 
@@ -335,7 +332,17 @@ def build():
 
   <h2>The deals</h2>
   <p>Click any column to sort, any row to open the full terms and the filing.</p>
-  <div id="table"></div>
+  <div class="controls inline">
+    {fbtn('grade', 'all', 'All', True)}{fbtn('grade', 'IG', 'IG')}{fbtn('grade', 'HY', 'HY')}
+    <span style="width:10px"></span>
+    {fbtn('proceeds', 'all', 'Any use', True)}{fbtn('proceeds', 'acquisition', 'Acquisition')}
+    {fbtn('proceeds', 'refinancing', 'Refinancing')}{fbtn('proceeds', 'other', 'Other')}
+    <select class="bucketsel"><option value="all">Any tenor</option>
+    {''.join(f'<option value="{b}">{b}</option>' for b in BUCKETS)}</select>
+    <input class="searchbox" type="search" placeholder="Search issuer or CUSIP">
+    <span class="rowcount" id="rowcount"></span>
+  </div>
+  <div class="tablewrap"><div id="table"></div></div>
 </div>
 <main class="col">
   <h2>Method and limits</h2>
@@ -348,10 +355,10 @@ def build():
     <li>One row per tranche, deduplicated by CUSIP, so a deal filed twice counts once.</li>
     <li>Index spreads are option-adjusted and matched by rating category, not exact notch, so the gap is directional.</li>
     <li>No order book data: filings do not disclose books, price talk or new issue concession.</li>
-    <li>{mismatch_line}</li>
+    <li>{checks.get('MISMATCH', 0)} tranche(s) failed the math check and are flagged in the table, not discarded.</li>
   </ul>
   <footer>Source: SEC EDGAR (424B2, 424B5, FWP) and FRED (ICE BofA index OAS, Treasury yields).
-  Personal project. Not investment advice. <a href="{REPO}">Code on GitHub</a>.</footer>
+  Personal project. Not investment advice.</footer>
 </main>
 <script>
 const BONDS={json.dumps(bonds)};

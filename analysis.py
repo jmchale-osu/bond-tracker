@@ -9,7 +9,15 @@ from statistics import median
 
 import db
 
-MIN_GROUP = 3     # never report a median from fewer than this many bonds
+MIN_GROUP = 3
+BDC = ("capital corp", "capital inc", "specialty lending", "private credit",
+       "bdc", "hercules", "trinity capital", "blue owl", "ares capital",
+       "prospect capital", "oaktree")
+
+
+def is_bdc(issuer):
+    low = (issuer or "").lower()
+    return any(name in low for name in BDC)     # never report a median from fewer than this many bonds
 
 
 def rows(conn, sql, args=()):
@@ -22,11 +30,16 @@ def test_proceeds(conn):
     print("TEST 1  Acquisition vs refinancing, spread versus index (bps)")
     print("=" * 78)
     data = rows(conn, """
-        SELECT d.use_of_proceeds, t.grade, t.maturity_bucket, t.spread_vs_index_bps
+        SELECT d.use_of_proceeds, t.grade, t.maturity_bucket, t.spread_vs_index_bps, d.issuer
         FROM tranches t JOIN deals d ON d.accession = t.accession
         WHERE t.spread_vs_index_bps IS NOT NULL
           AND d.use_of_proceeds IN ('acquisition', 'refinancing')
     """)
+    if "--ex-bdc" in sys.argv:
+        before = len(data)
+        data = [r for r in data if not is_bdc(r[4])]
+        print(f"  excluding specialty finance issuers: {before - len(data)} tranches dropped")
+    data = [r[:4] for r in data]
     if not data:
         print("  no data yet: run proceeds.py and enrich.py first\n")
         return
@@ -115,7 +128,43 @@ def test_rates(conn):
     print("  Heavy supply alongside a rise suggests issuers moving ahead of it.\n")
 
 
-TESTS = {"proceeds": test_proceeds, "tenor": test_tenor_mix, "rates": test_rates}
+def test_structure(conn):
+    """Test 4: do structural protections show up in pricing?"""
+    print("=" * 78)
+    print("TEST 4  Structure versus pricing (bps vs index)")
+    print("=" * 78)
+
+    cuts = [
+        ("Change of control put", "CASE WHEN d.change_of_control = 1 THEN 'yes' ELSE 'no' END"),
+        ("Guarantees", "COALESCE(d.guarantees, 'unknown')"),
+        ("Ranking", "COALESCE(d.ranking, 'unknown')"),
+        ("Coupon step", "CASE WHEN d.coupon_step = 1 THEN 'yes' ELSE 'no' END"),
+        ("Sector", "COALESCE(d.sector, 'unknown')"),
+    ]
+    for label, expr in cuts:
+        rows = rows_for(conn, expr)
+        if not rows:
+            continue
+        print(f"\n  {label}")
+        for group, values in sorted(rows.items(), key=lambda kv: -len(kv[1])):
+            if len(values) < MIN_GROUP:
+                continue
+            print(f"    {str(group)[:24]:24} median {median(values):+6.0f} bps   n={len(values)}")
+    print("\n  Small groups are hidden. These are raw cuts, not controlled for rating or tenor.\n")
+
+
+def rows_for(conn, expr):
+    out = {}
+    for group, gap in conn.execute(f"""
+        SELECT {expr}, t.spread_vs_index_bps
+        FROM tranches t JOIN deals d ON d.accession = t.accession
+        WHERE t.spread_vs_index_bps IS NOT NULL"""):
+        out.setdefault(group, []).append(gap)
+    return out
+
+
+TESTS = {"proceeds": test_proceeds, "tenor": test_tenor_mix, "rates": test_rates,
+         "structure": test_structure}
 
 if __name__ == "__main__":
     conn = db.connect()

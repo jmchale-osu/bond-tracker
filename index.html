@@ -43,7 +43,11 @@ svg{width:100%;height:auto;display:block;overflow:visible}
 .tick{fill:var(--ink3);font-size:11px;font-variant-numeric:tabular-nums}
 .legend{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--ink2);margin-top:12px}
 .key{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:6px}
+.tablewrap{max-height:72vh;overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
 table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{position:sticky;top:0;background:var(--surface);z-index:2;box-shadow:0 1px 0 var(--line)}
+.controls.inline{position:static;border-bottom:none;padding:4px 0 12px}
+.rowcount{font-size:12px;color:var(--ink3);margin-left:auto}
 th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);
 padding:9px 10px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap;user-select:none}
 th:hover{color:var(--ink)}
@@ -59,11 +63,26 @@ ul{color:var(--ink2);font-size:14px;padding-left:20px}
 line-height:1.4;padding:7px 10px;border-radius:7px;transform:translate(-50%,-125%);transition:opacity .08s;z-index:9}
 footer{margin:56px 0 80px;padding-top:18px;border-top:1px solid var(--line);font-size:12px;color:var(--ink3)}
 @media(max-width:620px){h1{font-size:30px}.hide-s{display:none}}
+
+/* extras */
+.recap{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:22px 26px}
+.recap p{color:var(--ink);font-size:16px;line-height:1.7;margin:0 0 12px}
+.recap .stamp{font-size:12px;color:var(--ink3);border-top:1px solid var(--line);padding-top:10px;margin:14px 0 0}
+.ask{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0 6px}
+#askbox{flex:1;min-width:260px;border-radius:8px;padding:9px 13px}
+.askbtn{border-radius:8px;background:var(--ink);color:var(--bg);border:1px solid var(--ink);
+padding:9px 16px;cursor:pointer;font-size:13px}
+.examples{display:flex;gap:7px;flex-wrap:wrap;margin:2px 0 4px}
+.ex{font-size:12px;color:var(--ink2);background:var(--chip);border:none;border-radius:999px;
+padding:5px 11px;cursor:pointer}
+.ex:hover{color:var(--ink)}
+#askout{font-size:15px;color:var(--ink);background:var(--chip);border-radius:8px;
+padding:12px 14px;margin:8px 0 0;display:none}
 </style></head><body><div id="tip"></div>
 <header class="col">
   <h1>What the primary market paid</h1>
   <p class="dek">Every registered corporate bond deal, read out of SEC filings and priced against its index.</p>
-  <p class="byline">James McHale · 2026-07-09 to 2026-10-06 · generated 2026-10-08</p>
+  <p class="byline">James McHale · 2026-07-09 to 2026-10-06 · generated 2026-10-21</p>
 </header>
 <main class="col">
   <p class="lede">Within matched rating and maturity buckets, acquisition-funded deals priced a median <b>15 bps tighter</b> than refinancings, across 29 tranches in 3 buckets. The refinancing sample leans toward specialty finance issuers, which widens the gap in shorter maturities.</p>
@@ -83,9 +102,9 @@ footer{margin:56px 0 80px;padding-top:18px;border-top:1px solid var(--line);font
     <span style="width:10px"></span>
     <button class='f' data-k='proceeds' data-v='all' aria-pressed='true'>Any use</button><button class='f' data-k='proceeds' data-v='acquisition' aria-pressed='false'>Acquisition</button>
     <button class='f' data-k='proceeds' data-v='refinancing' aria-pressed='false'>Refinancing</button><button class='f' data-k='proceeds' data-v='other' aria-pressed='false'>Other</button>
-    <select id="bucket"><option value="all">Any tenor</option>
+    <select id="bucket" class="bucketsel"><option value="all">Any tenor</option>
     <option value="1-3y">1-3y</option><option value="3-5y">3-5y</option><option value="5-7y">5-7y</option><option value="7-10y">7-10y</option><option value="10-15y">10-15y</option><option value="15y+">15y+</option></select>
-    <input id="search" type="search" placeholder="Search issuer or CUSIP">
+    <input id="search" class="searchbox" type="search" placeholder="Search issuer or CUSIP">
     <span id="weekchip"></span>
   </div>
 
@@ -98,11 +117,41 @@ footer{margin:56px 0 80px;padding-top:18px;border-top:1px solid var(--line);font
   Above the line means it paid more than comparable paper.</p>
   <figure><div id="dots"></div><div class="legend" id="legend"></div></figure>
 
+
+  <h2>Ask the data</h2>
+  <p>Type a question. This filters and counts the table below. It does not use a language model,
+  so it can only report what is already here.</p>
+  <div class="ask">
+    <input id="askbox" type="search" placeholder="e.g. widest BBB deals, or how much did Dell raise">
+    <button class="askbtn" id="askgo">Answer</button>
+  </div>
+  <div class="examples">
+    <button class="ex">widest deals vs index</button>
+    <button class="ex">tightest acquisition deals</button>
+    <button class="ex">biggest deals in 15y+</button>
+    <button class="ex">how much HY issuance</button>
+    <button class="ex">how many refinancing deals</button>
+  </div>
+  <p id="askout"></p>
+
   <h2>The deals</h2>
   <p>Click any column to sort, any row to open the full terms and the filing.</p>
-  <div id="table"></div>
+  <div class="controls inline">
+    <button class='f' data-k='grade' data-v='all' aria-pressed='true'>All</button><button class='f' data-k='grade' data-v='IG' aria-pressed='false'>IG</button><button class='f' data-k='grade' data-v='HY' aria-pressed='false'>HY</button>
+    <span style="width:10px"></span>
+    <button class='f' data-k='proceeds' data-v='all' aria-pressed='true'>Any use</button><button class='f' data-k='proceeds' data-v='acquisition' aria-pressed='false'>Acquisition</button>
+    <button class='f' data-k='proceeds' data-v='refinancing' aria-pressed='false'>Refinancing</button><button class='f' data-k='proceeds' data-v='other' aria-pressed='false'>Other</button>
+    <select class="bucketsel"><option value="all">Any tenor</option>
+    <option value="1-3y">1-3y</option><option value="3-5y">3-5y</option><option value="5-7y">5-7y</option><option value="7-10y">7-10y</option><option value="10-15y">10-15y</option><option value="15y+">15y+</option></select>
+    <input class="searchbox" type="search" placeholder="Search issuer or CUSIP">
+    <span class="rowcount" id="rowcount"></span>
+  </div>
+  <div class="tablewrap"><div id="table"></div></div>
 </div>
 <main class="col">
+  <h2>This week, from the agent</h2>
+  <div class="recap"><p>The week brought $1.45 billion across 3 tranches, a sharp drop from the prior four weeks when volume ranged from $1.5 billion to $50.0 billion and tranche counts from 2 to 61. Atmos Energy Corporation led with $700 million of 10-year notes at 78 basis points, Hercules Capital priced $400 million 3-year at 195, and Trinity Capital issued $350 million 5-year at 262.5. All three priced wide versus their index benchmarks. Trinity Capital priced widest at +159.5 basis points through the index on its Baa3-rated 7.500% 2032s, followed by Hercules Capital at +91 on its Baa2-rated notes. Even Atmos Energy, rated A2/A-, came 8 basis points wide on its 10-year tranche. The pattern is consistent: specialty finance names paid a concession, and even the higher-quality utility issuer gave up a few basis points to get the deal done. Only Atmos Energy disclosed a use of proceeds, stating general corporate purposes, while Hercules Capital and Trinity Capital left proceeds unstated in the filings.</p><p class="stamp">Written by agent.py, which may only state numbers its database queries returned. Covering 2026-09-30 to 2026-10-06, written 2026-10-21.</p></div>
+
   <h2>Method and limits</h2>
   <p>A pipeline reads 424B and FWP filings from EDGAR, filters out stock offerings, asset-backed deals,
   convertibles, structured notes and sovereigns, and uses Claude to extract each tranche into a database.
@@ -224,6 +273,7 @@ function render(){
      median ${pm(med(groups[k]))} bps (n=${groups[k].length})</span>`).join('');
   const vol=rows.reduce((a,b)=>a+(b.size||0),0);
   $('#count').textContent=rows.length.toLocaleString();
+  const rc=$('#rowcount'); if(rc) rc.textContent=rows.length.toLocaleString()+' of '+BONDS.length.toLocaleString()+' tranches';
   $('#vol').textContent=money(vol);
   const gaps=rows.filter(b=>b.gap!=null).map(b=>b.gap);
   $('#medgap').textContent=gaps.length?pm(med(gaps))+' bps':'n/a';
@@ -249,10 +299,89 @@ function wire(){
 
 document.querySelectorAll('button.f').forEach(btn=>btn.onclick=()=>{
   const [k,v]=[btn.dataset.k,btn.dataset.v];
-  F[k]=v; document.querySelectorAll(`button.f[data-k="${k}"]`).forEach(b=>
-    b.setAttribute('aria-pressed', b===btn)); render();});
-$('#bucket').onchange=e=>{F.bucket=e.target.value;render();};
-$('#search').oninput=e=>{F.q=e.target.value.toLowerCase();render();};
+  F[k]=v;
+  document.querySelectorAll(`button.f[data-k="${k}"]`).forEach(b=>
+    b.setAttribute('aria-pressed', b.dataset.v===v));
+  render();});
+document.querySelectorAll('.bucketsel, #bucket').forEach(sel=>sel.onchange=e=>{
+  F.bucket=e.target.value;
+  document.querySelectorAll('.bucketsel, #bucket').forEach(s=>s.value=F.bucket);
+  render();});
+document.querySelectorAll('.searchbox, #search').forEach(inp=>inp.oninput=e=>{
+  F.q=e.target.value.toLowerCase();
+  document.querySelectorAll('.searchbox, #search').forEach(i=>{if(i!==e.target)i.value=e.target.value;});
+  render();});
 render();
 
-</script></body></html>
+</script>
+<script>
+(function(){
+  const out=document.getElementById('askout');
+  const box=document.getElementById('askbox');
+  const MONTHS=['january','february','march','april','may','june','july','august',
+                'september','october','november','december'];
+  const STOP=['deal','deals','bond','bonds','much','many','what','which','that','with','from',
+    'index','issuance','spread','spreads','tranche','tranches','priced','pricing','wide','widest',
+    'tight','tightest','cheap','cheapest','rich','richest','most','biggest','largest','total','raise','raised'];
+
+  function answer(q){
+    const text=(q||'').toLowerCase().trim();
+    if(!text) return;
+    out.style.display='block';
+
+    F.grade='all'; F.proceeds='all'; F.bucket='all'; F.week=null; F.q='';
+    const scope=[];
+    if(/\bhy\b|high.?yield|junk/.test(text)){F.grade='HY'; scope.push('high yield');}
+    else if(/\big\b|investment.?grade/.test(text)){F.grade='IG'; scope.push('investment grade');}
+    if(/acquisition|m&a|merger/.test(text)){F.proceeds='acquisition'; scope.push('acquisition-funded');}
+    else if(/refinanc|repay|redeem/.test(text)){F.proceeds='refinancing'; scope.push('refinancing');}
+    BUCKETS.forEach(b=>{if(text.includes(b.toLowerCase())){F.bucket=b; scope.push(b);}});
+
+    let month=null;
+    MONTHS.forEach((m,i)=>{if(text.includes(m)){month=i+1; scope.push(m[0].toUpperCase()+m.slice(1));}});
+
+    const issuers=[...new Set(BONDS.map(b=>(b.issuer||'').toLowerCase()))];
+    const words=text.split(/[^a-z0-9&.-]+/).filter(w=>w.length>3 && STOP.indexOf(w)<0);
+    for(const w of words){ if(issuers.some(i=>i.indexOf(w)>=0)){ F.q=w; scope.push('issuer matching "'+w+'"'); break; } }
+
+    const wantsTotal=/how much|total|volume|raised|sum/.test(text);
+    const wantsCount=/how many|count|number of/.test(text);
+    const tight=/tight|rich|through|inside/.test(text);
+    const big=/biggest|largest|size/.test(text);
+
+    if(typeof sortKey!=='undefined'){ sortKey = big ? 'size' : 'gap'; sortDir = tight ? 1 : -1; }
+    render();
+    document.querySelectorAll('.searchbox, #search').forEach(i=>i.value=F.q);
+    document.querySelectorAll('.bucketsel, #bucket').forEach(s=>s.value=F.bucket);
+
+    let rows=visible();
+    if(month) rows=rows.filter(b=>b.priced && Number(b.priced.slice(5,7))===month);
+    const where = scope.length? scope.join(', ') : 'all tranches';
+    const vol=rows.reduce((a,b)=>a+(b.size||0),0);
+    const gaps=rows.filter(b=>b.gap!=null).map(b=>b.gap);
+
+    if(!rows.length){ out.textContent='Nothing in the data matches that.'; return; }
+    if(wantsTotal){
+      out.innerHTML='<b>'+money(vol)+'</b> across '+rows.length+' tranches ('+where+').';
+    } else if(wantsCount){
+      out.innerHTML='<b>'+rows.length+'</b> tranches, '+money(vol)+' ('+where+').';
+    } else {
+      const sorted=[...rows].sort((a,b)=>{
+        const x = big ? (a.size||0) : (a.gap==null?-1e9:a.gap);
+        const y = big ? (b.size||0) : (b.gap==null?-1e9:b.gap);
+        return tight && !big ? x-y : y-x;});
+      const top=sorted.slice(0,3).map(b=>b.issuer+' '+(big?money(b.size):pm(b.gap)+' bps')).join(', ');
+      const label = big ? 'Largest' : (tight ? 'Tightest to index' : 'Widest to index');
+      out.innerHTML=label+', '+where+': <b>'+top+'</b>. '+rows.length+' tranches'
+        +(gaps.length? ', median '+pm(med(gaps))+' bps vs index.' : '.');
+    }
+    if(month) out.innerHTML+=' <span style="color:var(--ink3)">The month applies to this answer, not the table.</span>';
+    document.getElementById('table').scrollIntoView({behavior:'smooth', block:'start'});
+  }
+
+  document.getElementById('askgo').onclick=()=>answer(box.value);
+  box.onkeydown=e=>{if(e.key==='Enter')answer(box.value);};
+  document.querySelectorAll('.ex').forEach(b=>b.onclick=()=>{box.value=b.textContent; answer(b.textContent);});
+})();
+</script>
+</body></html>

@@ -27,14 +27,17 @@ def collect():
                t.maturity_date, t.spread_bps, t.spread_vs_index_bps, t.yield_pct,
                t.price_pct_of_par, t.grade, t.maturity_bucket, t.rating_moodys, t.rating_sp,
                t.math_check, d.use_of_proceeds, d.proceeds_quote,
-               COALESCE(d.trade_date, d.filing_date), d.url, d.bookrunners
+               COALESCE(d.trade_date, d.filing_date), d.url, d.bookrunners,
+               d.ranking, d.guarantees, d.guarantor_note, d.change_of_control,
+               d.change_of_control_price, d.coupon_step, d.coupon_step_note, d.sector, d.country
         FROM tranches t JOIN deals d ON d.accession = t.accession
         WHERE COALESCE(d.trade_date, d.filing_date) IS NOT NULL
         ORDER BY COALESCE(d.trade_date, d.filing_date) DESC
     """).fetchall()
     keys = ["key", "issuer", "title", "cusip", "size", "coupon", "maturity", "spread", "gap",
             "yield", "price", "grade", "bucket", "moodys", "sp", "check", "proceeds",
-            "quote", "priced", "url", "banks"]
+            "quote", "priced", "url", "banks",
+            "rank", "guar", "guarnote", "coc", "cocpx", "step", "stepnote", "sector", "country"]
     bonds = [dict(zip(keys, r)) for r in rows]
     filings = conn.execute("SELECT COUNT(*) FROM deals").fetchone()[0]
     return bonds, filings
@@ -127,13 +130,28 @@ tr.detail td{background:var(--chip);color:var(--ink2);font-size:13px}
 ul{color:var(--ink2);font-size:14px;padding-left:20px}
 #tip{position:fixed;pointer-events:none;opacity:0;background:var(--ink);color:var(--bg);font-size:12px;
 line-height:1.4;padding:7px 10px;border-radius:7px;transform:translate(-50%,-125%);transition:opacity .08s;z-index:9}
+.stab{width:100%;border-collapse:collapse;font-size:14px}
+.stab th,.stab td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left}
+.stab th.n,.stab td.n{text-align:right}
+.stab tr.first td{border-top:1px solid var(--line)}
+.stab .nn{color:var(--ink3);font-size:12px}
+select.fsel{border-radius:8px}
 footer{margin:56px 0 80px;padding-top:18px;border-top:1px solid var(--line);font-size:12px;color:var(--ink3)}
 @media(max-width:620px){h1{font-size:30px}.hide-s{display:none}}
 """
 
 JS = r"""
 const $=s=>document.querySelector(s), tip=$('#tip');
-const F={grade:'all',proceeds:'all',bucket:'all',week:null,q:''};
+const F={grade:'all',proceeds:'all',bucket:'all',week:null,q:'',rank:'all',coc:'all',guar:'all',sector:'all'};
+const RLABEL={senior_unsecured:'Senior unsecured',senior_secured:'Senior secured',first_mortgage:'First mortgage',
+  subordinated:'Subordinated',junior_subordinated:'Junior subordinated',other:'Other',not_stated:'Not stated'};
+const RSHORT={senior_unsecured:'Sr unsecured',senior_secured:'Sr secured',first_mortgage:'1st mortgage',
+  subordinated:'Subordinated',junior_subordinated:'Jr subordinated',other:'Other',not_stated:''};
+const GLABEL={none:'No guarantee',parent:'Guaranteed by parent',subsidiaries:'Guaranteed by subsidiaries',
+  both:'Guaranteed by parent and subsidiaries',not_stated:'No guarantee mentioned'};
+const rgroup=r=>r==='senior_unsecured'?'senior':(r==='senior_secured'||r==='first_mortgage')?'secured':
+  (r==='subordinated'||r==='junior_subordinated')?'sub':'other';
+const guaranteed=g=>g==='parent'||g==='subsidiaries'||g==='both';
 let sortKey='priced', sortDir=-1;
 const money=v=>v==null?'':(v>=1e9?'$'+(v/1e9).toFixed(2)+'B':'$'+Math.round(v/1e6)+'mm');
 const pm=v=>v==null?'':(v>0?'+':'')+Math.round(v);
@@ -149,6 +167,10 @@ function visible(){
       if(g!==F.proceeds) return false; }
     if(F.bucket!=='all' && b.bucket!==F.bucket) return false;
     if(F.week && week(b.priced)!==F.week) return false;
+    if(F.rank!=='all' && rgroup(b.rank)!==F.rank) return false;
+    if(F.coc!=='all' && (b.coc?'yes':'no')!==F.coc) return false;
+    if(F.guar!=='all' && (guaranteed(b.guar)?'yes':'no')!==F.guar) return false;
+    if(F.sector!=='all' && (b.sector||'Unknown')!==F.sector) return false;
     if(F.q && !((b.issuer||'')+' '+(b.title||'')+' '+(b.cusip||'')).toLowerCase().includes(F.q)) return false;
     return true;});
 }
@@ -196,7 +218,8 @@ function drawDots(rows){
 
 function drawTable(rows){
   const cols=[['issuer','Issuer',''],['title','Tranche','hide-s'],['size','Size','n'],['coupon','Coupon','n hide-s'],
-    ['spread','Spread','n'],['gap','vs index','n'],['grade','Grade','hide-s'],['proceeds','Proceeds','hide-s'],['priced','Priced','n']];
+    ['spread','Spread','n'],['gap','vs index','n'],['grade','Grade','hide-s'],['rank','Ranking','hide-s'],
+    ['coc','CoC put','hide-s'],['proceeds','Proceeds','hide-s'],['priced','Priced','n']];
   const sorted=[...rows].sort((a,b)=>{const x=a[sortKey],y=b[sortKey];
     if(x==null)return 1; if(y==null)return -1;
     return (typeof x==='number'?x-y:String(x).localeCompare(String(y)))*sortDir;});
@@ -207,6 +230,7 @@ function drawTable(rows){
       <td>${b.issuer||''}</td><td class="hide-s">${b.title||''}</td><td class="n">${money(b.size)}</td>
       <td class="n hide-s">${b.coupon!=null?b.coupon+'%':''}</td><td class="n">${pm(b.spread)}</td>
       <td class="n">${pm(b.gap)}</td><td class="hide-s">${b.grade||''}</td>
+      <td class="hide-s">${RSHORT[b.rank]||''}</td><td class="hide-s">${b.coc?'Yes':''}</td>
       <td class="hide-s">${plabel(b.proceeds)}</td><td class="n">${b.priced||''}</td></tr>`;});
   return s+'</tbody></table>'+(sorted.length>200?'<p class="note">Showing the first 200 of '+sorted.length+'.</p>':'');
 }
@@ -216,14 +240,38 @@ function detailRow(b){
     b.yield!=null?`Yield ${b.yield}%`:null, b.price!=null?`Price ${b.price}`:null,
     (b.moodys||b.sp)?`Rated ${[b.moodys,b.sp].filter(Boolean).join(' / ')}`:null,
     b.banks?`Books: ${b.banks}`:null].filter(Boolean).join(' · ');
+  const sbits=[b.rank&&b.rank!=='not_stated'?RLABEL[b.rank]:null,
+    b.guar?GLABEL[b.guar]+(b.guarnote&&guaranteed(b.guar)?` (${b.guarnote})`:''):null,
+    b.coc?`Change of control put${b.cocpx?' at '+b.cocpx+'%':''}`:(b.rank?'No change of control put':null),
+    b.step?`Coupon step: ${b.stepnote||'yes'}`:null,
+    b.sector?`Sector: ${b.sector}`:null, b.country?`Domicile: ${b.country}`:null].filter(Boolean).join(' · ');
+  const structure=sbits?`<br><b>Structure</b> · ${sbits}`:'';
   const quote=b.quote?`<br><em>"${b.quote}"</em>`:'';
   const flag=b.check==='MISMATCH'?'<br><span class="flag">Pricing math did not reconcile: flagged, not discarded.</span>':'';
   const link=b.url?`<br><a href="${b.url}" target="_blank" rel="noopener">Source filing on EDGAR</a>`:'';
-  return `<tr class="detail"><td colspan="9">${bits}${quote}${flag}${link}</td></tr>`;
+  return `<tr class="detail"><td colspan="11">${bits}${structure}${quote}${flag}${link}</td></tr>`;
+}
+
+function drawStructure(rows){
+  const groups=[
+    ['Change of control put',[['Yes',b=>b.coc],['No',b=>b.rank&&!b.coc]]],
+    ['Guarantee',[['Guaranteed',b=>guaranteed(b.guar)],['Not guaranteed',b=>b.guar&&!guaranteed(b.guar)]]],
+    ['Ranking',[['Senior unsecured',b=>rgroup(b.rank)==='senior'],['Secured or first mortgage',b=>rgroup(b.rank)==='secured'],
+                ['Subordinated',b=>rgroup(b.rank)==='sub']]],
+    ['Coupon step',[['Has a step',b=>b.step],['No step',b=>b.rank&&!b.step]]]];
+  let s='<table class="stab"><thead><tr><th>Term</th><th></th><th class="n">Tranches</th><th class="n">Volume</th>'+
+        '<th class="n">Median vs index</th></tr></thead><tbody>';
+  groups.forEach(([term,cuts])=>cuts.forEach(([label,fn],i)=>{
+    const r=rows.filter(fn), g=r.filter(b=>b.gap!=null).map(b=>b.gap);
+    s+=`<tr${i===0?' class="first"':''}><td>${i===0?term:''}</td><td>${label}</td><td class="n">${r.length}</td>
+        <td class="n">${money(r.reduce((a,b)=>a+(b.size||0),0))}</td>
+        <td class="n">${g.length?pm(med(g))+' bps <span class="nn">(n='+g.length+')</span>':''}</td></tr>`;}));
+  return s+'</tbody></table>';
 }
 
 function render(){
   const rows=visible();
+  if($('#structure')) $('#structure').innerHTML=drawStructure(rows);
   $('#bars').innerHTML=drawBars(rows);
   $('#dots').innerHTML=drawDots(rows);
   $('#table').innerHTML=drawTable(rows);
@@ -268,6 +316,10 @@ document.querySelectorAll('.bucketsel, #bucket').forEach(sel=>sel.onchange=e=>{
   F.bucket=e.target.value;
   document.querySelectorAll('.bucketsel, #bucket').forEach(s=>s.value=F.bucket);
   render();});
+document.querySelectorAll('select.fsel').forEach(sel=>sel.onchange=e=>{
+  const k=sel.dataset.k; F[k]=e.target.value;
+  document.querySelectorAll(`select.fsel[data-k="${k}"]`).forEach(x=>x.value=F[k]);
+  render();});
 document.querySelectorAll('.searchbox, #search').forEach(inp=>inp.oninput=e=>{
   F.q=e.target.value.toLowerCase();
   document.querySelectorAll('.searchbox, #search').forEach(i=>{if(i!==e.target)i.value=e.target.value;});
@@ -284,6 +336,21 @@ def build():
     checked = checks.get("OK", 0) + checks.get("MISMATCH", 0)
     dates = [b["priced"] for b in bonds if b["priced"]]
     span = f"{min(dates)} to {max(dates)}" if dates else "no deals yet"
+
+    sectors = sorted({b["sector"] or "Unknown" for b in bonds})
+    ranked = sum(1 for b in bonds if b["rank"] and b["rank"] != "not_stated")
+
+    def fsel(k, first, options):
+        opts = f'<option value="all">{first}</option>' + "".join(
+            f'<option value="{v}">{label}</option>' for v, label in options)
+        return f'<select class="fsel" data-k="{k}">{opts}</select>'
+
+    structure_filters = (
+        fsel("rank", "Any ranking", [("senior", "Senior unsecured"), ("secured", "Secured / first mortgage"),
+                                     ("sub", "Subordinated")])
+        + fsel("coc", "Any CoC", [("yes", "CoC put"), ("no", "No CoC put")])
+        + fsel("guar", "Any guarantee", [("yes", "Guaranteed"), ("no", "Not guaranteed")])
+        + (fsel("sector", "Any sector", [(x, x) for x in sectors]) if len(sectors) > 1 else ""))
 
     def fbtn(k, v, label, first=False):
         return (f"<button class='f' data-k='{k}' data-v='{v}' "
@@ -317,7 +384,7 @@ def build():
     {fbtn('proceeds', 'refinancing', 'Refinancing')}{fbtn('proceeds', 'other', 'Other')}
     <select id="bucket" class="bucketsel"><option value="all">Any tenor</option>
     {''.join(f'<option value="{b}">{b}</option>' for b in BUCKETS)}</select>
-    <input id="search" class="searchbox" type="search" placeholder="Search issuer or CUSIP">
+    <input id="search" class="searchbox" type="search" placeholder="Search issuer">
     <span id="weekchip"></span>
   </div>
 
@@ -330,6 +397,13 @@ def build():
   Above the line means it paid more than comparable paper.</p>
   <figure><div id="dots"></div><div class="legend" id="legend"></div></figure>
 
+  <h2>Structure</h2>
+  <p>The terms that decide what a holder is owed when things go wrong, read from each deal's final
+  prospectus supplement. The table follows the filters, so pick a grade and tenor to compare like
+  with like. Unfiltered, it mixes ratings and maturities and the medians are not a fair comparison.</p>
+  <div class="controls inline">{structure_filters}</div>
+  <figure><div id="structure"></div></figure>
+
   <h2>The deals</h2>
   <p>Click any column to sort, any row to open the full terms and the filing.</p>
   <div class="controls inline">
@@ -339,7 +413,8 @@ def build():
     {fbtn('proceeds', 'refinancing', 'Refinancing')}{fbtn('proceeds', 'other', 'Other')}
     <select class="bucketsel"><option value="all">Any tenor</option>
     {''.join(f'<option value="{b}">{b}</option>' for b in BUCKETS)}</select>
-    <input class="searchbox" type="search" placeholder="Search issuer or CUSIP">
+    {structure_filters}
+    <input class="searchbox" type="search" placeholder="Search issuer">
     <span class="rowcount" id="rowcount"></span>
   </div>
   <div class="tablewrap"><div id="table"></div></div>
@@ -352,7 +427,9 @@ def build():
   Every tranche is checked against its own arithmetic: benchmark yield plus spread should equal the yield.</p>
   <ul>
     <li>Registered deals only. Most high yield is sold under Rule 144A and never reaches EDGAR.</li>
-    <li>One row per tranche, deduplicated by CUSIP, so a deal filed twice counts once.</li>
+    <li>One row per tranche, deduplicated by issuer, coupon and maturity, so a deal filed twice counts once.</li>
+    <li>Ranking, guarantees, change of control and coupon steps come from the final prospectus supplement,
+    matched to the term sheet by coupon. {ranked} of {len(bonds)} tranches have a stated ranking.</li>
     <li>Index spreads are option-adjusted and matched by rating category, not exact notch, so the gap is directional.</li>
     <li>No order book data: filings do not disclose books, price talk or new issue concession.</li>
     <li>{checks.get('MISMATCH', 0)} tranche(s) failed the math check and are flagged in the table, not discarded.</li>

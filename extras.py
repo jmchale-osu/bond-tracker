@@ -66,6 +66,8 @@ ASK_JS = r"""
     out.style.display='block';
 
     F.grade='all'; F.proceeds='all'; F.bucket='all'; F.week=null; F.q='';
+    F.rank='all'; F.coc='all'; F.guar='all'; F.sector='all';
+    document.querySelectorAll('select.fsel').forEach(s=>s.value='all');
     const scope=[];
     if(/\bhy\b|high.?yield|junk/.test(text)){F.grade='HY'; scope.push('high yield');}
     else if(/\big\b|investment.?grade/.test(text)){F.grade='IG'; scope.push('investment grade');}

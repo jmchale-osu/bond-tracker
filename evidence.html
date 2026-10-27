@@ -1,0 +1,119 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Evidence · New Issue Credit Tracker</title>
+<meta name="description" content="The bonds behind each claim in the thesis, with what each prospectus term means.">
+<meta property="og:title" content="Evidence · New Issue Credit Tracker"><meta property="og:description" content="The bonds behind each claim in the thesis, with what each prospectus term means.">
+<meta property="og:type" content="website"><meta name="twitter:card" content="summary">
+<link rel="stylesheet" href="style.css"></head>
+<body data-page="evidence"><div id="tip"></div>
+<div class="site"><div class="in"><a class="brand" href="index.html">New Issue Credit Tracker</a><nav><a href="index.html">Thesis</a><a href="evidence.html" aria-current=page>Evidence</a><a href="market.html">Market</a><a href="deals.html">Deals</a><a href="method.html">Method</a></nav></div></div>
+
+<header class="page col">
+  <p class="kicker">Evidence</p>
+  <h1>Every bond behind every claim</h1>
+  <p class="dek">What each term means for a bondholder, the bonds that test it, and the checks that could
+  overturn the reading.</p>
+  <div class="claimnav"><a href="#sub">Subordination is paid for</a><a href="#secured">Collateral is worth something</a><a href="#coc">Buyers pay up for a change of control put</a><a href="#step">Coupon steps mark weaker credits</a><a href="#acq">Acquisition debt carries a concession</a></div>
+</header>
+<main class="col">
+  <section class="claim" id="sub">
+    <h2>Subordination is paid for</h2>
+    <p><span class="pill v-early">Too early</span> &nbsp;<span style="color:var(--ink3);font-size:13px">
+    Expected: wider</span></p>
+    <p>In a bankruptcy, creditors are paid in order of rank. Senior unsecured holders are paid before
+      subordinated holders, and junior subordinated notes (often called hybrids) come last among bondholders.
+      Rating agencies notch subordinated debt below the issuer's senior rating for this reason.</p>
+    <div class="facts">
+      <div><div class="v">+111 bps</div><div class="k">median vs peers</div></div>
+      <div><div class="v">+25 to +117</div><div class="k">range</div></div>
+      <div><div class="v">4</div><div class="k">bonds</div></div>
+      <div><div class="v">2</div><div class="k">issuers</div></div>
+    </div>
+    <div class="callout"><p><b>The cleanest comparison.</b> Sysco Holdings Corporation and Sysco Corporation sold bonds with and without this feature on the same day and maturity, which holds the company constant. Those 3 bonds priced a median <b>+115 bps</b> from their own sister bonds.</p></div>
+    <div class="panel"><div id="strip-sub"></div>
+    <p class="cap">Each dot is one bond: how many bps wider (right) or tighter (left) it priced than its peers.</p></div>
+    <h3>Checks</h3><ul class="checks"><li>The largest single issuer, Sysco Holdings Corporation and Sysco Corporation, accounts for 75% of the bonds. The range resamples whole issuers, so this concentration is reflected in it.</li><li>Only 2 issuers so far, so the verdict waits for at least 3.</li></ul>
+  </section>
+  <section class="claim" id="secured">
+    <h2>Collateral is worth something</h2>
+    <p><span class="pill v-mixed">Mixed</span> &nbsp;<span style="color:var(--ink3);font-size:13px">
+    Expected: tighter</span></p>
+    <p>Secured notes and utility first mortgage bonds are backed by specific assets, so recovery in a
+      default is higher. Utilities issue most of the secured paper in this sample, and their mortgage bonds are
+      usually rated a notch or two above their unsecured debt.</p>
+    <div class="facts">
+      <div><div class="v">-4 bps</div><div class="k">median vs peers</div></div>
+      <div><div class="v">-9 to +17</div><div class="k">range</div></div>
+      <div><div class="v">9</div><div class="k">bonds</div></div>
+      <div><div class="v">6</div><div class="k">issuers</div></div>
+    </div>
+    
+    <div class="panel"><div id="strip-secured"></div>
+    <p class="cap">Each dot is one bond: how many bps wider (right) or tighter (left) it priced than its peers.</p></div>
+    <h3>Checks</h3><ul class="checks"><li>The largest single issuer, Pacific Gas and Electric Company, accounts for 22% of the bonds. The range resamples whole issuers, so this concentration is reflected in it.</li></ul>
+  </section>
+  <section class="claim" id="coc">
+    <h2>Buyers pay up for a change of control put</h2>
+    <p><span class="pill v-mixed">Mixed</span> &nbsp;<span style="color:var(--ink3);font-size:13px">
+    Expected: tighter</span></p>
+    <p>A change of control put lets holders sell the bonds back at 101% of face if the company is acquired
+      and its rating falls below investment grade. It protects against a leveraged buyout loading the company
+      with new debt. If buyers value it, bonds that carry one should price tighter.</p>
+    <div class="facts">
+      <div><div class="v">+6 bps</div><div class="k">median vs peers</div></div>
+      <div><div class="v">+0 to +17</div><div class="k">range</div></div>
+      <div><div class="v">104</div><div class="k">bonds</div></div>
+      <div><div class="v">43</div><div class="k">issuers</div></div>
+    </div>
+    
+    <div class="panel"><div id="strip-coc"></div>
+    <p class="cap">Each dot is one bond: how many bps wider (right) or tighter (left) it priced than its peers.</p></div>
+    <h3>Checks</h3><ul class="checks"><li>Without specialty finance lenders (BDCs), the estimate is <b>+1 bps</b> across 97 bonds.</li><li>The largest single issuer, Sysco Holdings Corporation and Sysco Corporation, accounts for 9% of the bonds. The range resamples whole issuers, so this concentration is reflected in it.</li></ul>
+  </section>
+  <section class="claim" id="step">
+    <h2>Coupon steps mark weaker credits</h2>
+    <p><span class="pill v-early">Too early</span> &nbsp;<span style="color:var(--ink3);font-size:13px">
+    Expected: wider</span></p>
+    <p>A coupon step raises the interest rate if the bonds are downgraded. It compensates holders for
+      ratings risk, which is why it tends to appear when that risk is real: the step is a signal about the credit
+      as much as a protection.</p>
+    <div class="facts">
+      <div><div class="v">+119 bps</div><div class="k">median vs peers</div></div>
+      <div><div class="v">+7 to +219</div><div class="k">range</div></div>
+      <div><div class="v">4</div><div class="k">bonds</div></div>
+      <div><div class="v">3</div><div class="k">issuers</div></div>
+    </div>
+    
+    <div class="panel"><div id="strip-step"></div>
+    <p class="cap">Each dot is one bond: how many bps wider (right) or tighter (left) it priced than its peers.</p></div>
+    <h3>Checks</h3><ul class="checks"><li>The largest single issuer, Kyndryl Holdings, Inc., accounts for 50% of the bonds. The range resamples whole issuers, so this concentration is reflected in it.</li></ul>
+  </section>
+  <section class="claim" id="acq">
+    <h2>Acquisition debt carries a concession</h2>
+    <p><span class="pill v-mixed">Mixed</span> &nbsp;<span style="color:var(--ink3);font-size:13px">
+    Expected: wider</span></p>
+    <p>The use of proceeds section of a prospectus says what the money is for. Debt that funds an
+      acquisition adds leverage and integration risk; refinancing swaps old debt for new. If buyers read the
+      section, acquisition deals should pay a concession.</p>
+    <div class="facts">
+      <div><div class="v">-14 bps</div><div class="k">median vs peers</div></div>
+      <div><div class="v">-24 to +7</div><div class="k">range</div></div>
+      <div><div class="v">20</div><div class="k">bonds</div></div>
+      <div><div class="v">6</div><div class="k">issuers</div></div>
+    </div>
+    
+    <div class="panel"><div id="strip-acq"></div>
+    <p class="cap">Each dot is one bond: how many bps wider (right) or tighter (left) it priced than its peers.</p></div>
+    <h3>Checks</h3><ul class="checks"><li>The largest single issuer, Sysco Holdings Corporation and Sysco Corporation, accounts for 25% of the bonds. The range resamples whole issuers, so this concentration is reflected in it.</li></ul>
+  </section>
+  <section class="claim" id="raw">
+    <h2>All terms, unmatched</h2>
+    <p>The raw medians for every structural term. These mix ratings and maturities, which is why the claims
+    above compare matched peers instead. Filter to a grade and tenor to compare like with like.</p>
+    <div class="controls"><button class='f' data-k='grade' data-v='all' aria-pressed='true'>All</button><button class='f' data-k='grade' data-v='IG' aria-pressed='false'>IG</button><button class='f' data-k='grade' data-v='HY' aria-pressed='false'>HY</button><span class="gap"></span><select class="bucketsel"><option value="all">Any tenor</option><option value="1-3y">1-3y</option><option value="3-5y">3-5y</option><option value="5-7y">5-7y</option><option value="7-10y">7-10y</option><option value="10-15y">10-15y</option><option value="15y+">15y+</option></select><select class="fsel" data-k="rank"><option value="all">Any ranking</option><option value="senior">Senior unsecured</option><option value="secured">Secured / first mortgage</option><option value="sub">Subordinated</option></select><select class="fsel" data-k="coc"><option value="all">Any CoC</option><option value="yes">CoC put</option><option value="no">No CoC put</option></select><select class="fsel" data-k="guar"><option value="all">Any guarantee</option><option value="yes">Guaranteed</option><option value="no">Not guaranteed</option></select><select class="fsel" data-k="sector"><option value="all">Any sector</option><option value="Autos & Aerospace">Autos & Aerospace</option><option value="Banks">Banks</option><option value="Chemicals">Chemicals</option><option value="Construction">Construction</option><option value="Electronics">Electronics</option><option value="Financials">Financials</option><option value="Food & Beverage">Food & Beverage</option><option value="Healthcare">Healthcare</option><option value="Industrials">Industrials</option><option value="Instruments">Instruments</option><option value="Insurance">Insurance</option><option value="Metals & Mining">Metals & Mining</option><option value="Pharma & Chemicals">Pharma & Chemicals</option><option value="Real Estate">Real Estate</option><option value="Retail">Retail</option><option value="Services">Services</option><option value="Telecom & Media">Telecom & Media</option><option value="Transport">Transport</option><option value="Unknown">Unknown</option><option value="Utilities">Utilities</option><option value="Wholesale">Wholesale</option></select></div>
+    <div class="panel" style="padding:8px 12px;overflow-x:auto" id="structure"></div>
+  </section>
+</main>
+<div class="col"><footer>Built by James McHale from SEC EDGAR filings (424B2, 424B5, FWP) and FRED
+(ICE BofA index OAS, Treasury yields). Personal project. Not investment advice.</footer></div>
+<script src="data.js"></script><script src="app.js"></script></body></html>

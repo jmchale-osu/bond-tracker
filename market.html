@@ -1,0 +1,46 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Market · New Issue Credit Tracker</title>
+<meta name="description" content="Weekly registered corporate bond issuance and new issue spreads versus the ICE BofA indices.">
+<meta property="og:title" content="Market · New Issue Credit Tracker"><meta property="og:description" content="Weekly registered corporate bond issuance and new issue spreads versus the ICE BofA indices.">
+<meta property="og:type" content="website"><meta name="twitter:card" content="summary">
+<link rel="stylesheet" href="style.css"></head>
+<body data-page="market"><div id="tip"></div>
+<div class="site"><div class="in"><a class="brand" href="index.html">New Issue Credit Tracker</a><nav><a href="index.html">Thesis</a><a href="evidence.html">Evidence</a><a href="market.html" aria-current=page>Market</a><a href="deals.html">Deals</a><a href="method.html">Method</a></nav></div></div>
+
+<header class="page col">
+  <p class="kicker">Market</p>
+  <h1>What the primary market priced</h1>
+  <p class="dek">Registered corporate bond supply week by week, where index spreads stand, and which new
+  deals came cheap or rich to them.</p>
+  <p class="byline">2026-07-09 to 2026-10-06</p>
+  <div class="stats">
+    <div class="stat"><div class="v" id="count">0</div><div class="k">tranches in view</div></div>
+    <div class="stat"><div class="v" id="vol">0</div><div class="k">issuance in view</div></div>
+    <div class="stat"><div class="v" id="medgap">0</div><div class="k">median vs index</div></div>
+    <div class="stat"><div class="v">187/196</div><div class="k">pricing math verified</div></div>
+  </div>
+</header>
+<main class="wide">
+  <div class="controls"><button class='f' data-k='grade' data-v='all' aria-pressed='true'>All</button><button class='f' data-k='grade' data-v='IG' aria-pressed='false'>IG</button><button class='f' data-k='grade' data-v='HY' aria-pressed='false'>HY</button><span class="gap"></span><button class='f' data-k='proceeds' data-v='all' aria-pressed='true'>Any use</button>
+    <button class='f' data-k='proceeds' data-v='acquisition' aria-pressed='false'>Acquisition</button><button class='f' data-k='proceeds' data-v='refinancing' aria-pressed='false'>Refinancing</button>
+    <button class='f' data-k='proceeds' data-v='other' aria-pressed='false'>Other</button><select class="bucketsel"><option value="all">Any tenor</option><option value="1-3y">1-3y</option><option value="3-5y">3-5y</option><option value="5-7y">5-7y</option><option value="7-10y">7-10y</option><option value="10-15y">10-15y</option><option value="15y+">15y+</option></select><span id="weekchip"></span></div>
+
+  <h2>Weekly issuance</h2>
+  <p>Click a week to filter the page to it. Click again to clear.</p>
+  <figure><div id="bars"></div><figcaption>Priced volume by week (week starting Monday).</figcaption></figure>
+
+  <h2>Where the index stands</h2>
+  <p>The ICE BofA option-adjusted spread for BBB and BB corporates, the benchmarks most new deals here are
+  measured against. A wider index means credit is cheaper across the board.</p>
+  <figure><div id="index"></div><figcaption>Index OAS in bps, last reading each week. Source: FRED.</figcaption></figure>
+
+  <h2>Cheap or rich, by tenor</h2>
+  <p>Each dot is one bond: its spread minus the matching index on the day it priced. Above the dashed line
+  it paid more than comparable paper.</p>
+  <figure><div id="dots"></div><div class="legend" id="legend"></div>
+  <figcaption>Spread vs index in bps, by maturity bucket.</figcaption></figure>
+</main>
+<div class="col"><footer>Built by James McHale from SEC EDGAR filings (424B2, 424B5, FWP) and FRED
+(ICE BofA index OAS, Treasury yields). Personal project. Not investment advice.</footer></div>
+<script src="data.js"></script><script src="app.js"></script></body></html>

@@ -196,6 +196,30 @@ def excerpts(text, window=3000, cap=16000):
     return "\n\n...\n\n".join(out)[:cap]
 
 
+def ranking_from_titles(titles):
+    """The ranking the notes' own names state, when every tranche in the deal agrees. A fallback
+    prospectus matched by coupon can belong to a concurrent offering of different notes."""
+    titles = [(t or "").lower() for t in titles]
+    if not titles:
+        return None
+    for word, ranking in (("junior subordinated", "junior_subordinated"),
+                          ("subordinated", "subordinated"),
+                          ("first mortgage", "first_mortgage"),
+                          ("senior secured", "senior_secured")):
+        if all(word in t for t in titles):
+            return ranking
+    return None
+
+
+def check_ranking(conn, accession, ranking):
+    """Override a senior ranking the tranche titles contradict."""
+    titles = [t for (t,) in conn.execute("SELECT title FROM tranches WHERE accession = ?", (accession,))]
+    stated = ranking_from_titles(titles)
+    if stated and stated != ranking and ranking in ("senior_unsecured", "senior_secured", "not_stated"):
+        return stated
+    return ranking
+
+
 def main():
     limit = int(sys.argv[sys.argv.index("--limit") + 1]) if "--limit" in sys.argv else None
     redo = "--redo" in sys.argv
@@ -240,6 +264,10 @@ def main():
             note = (r.get("coupon_step_note") or "").lower()
             if r["coupon_step"] and ("change of control" in note or "repurchase" in note):
                 r["coupon_step"] = False      # a rating trigger on the put, not a coupon step
+            ranking = check_ranking(conn, accession, r["ranking"])
+            if ranking != r["ranking"]:
+                print(f"  ranking {r['ranking']} contradicts the note titles, using {ranking}")
+                r["ranking"], r["quote"] = ranking, f"(from note titles; matched prospectus disagreed) {r['quote']}"
             conn.execute("""
                 UPDATE deals SET ranking=?, is_secured=?, guarantees=?, guarantor_note=?,
                        change_of_control=?, change_of_control_price=?, coupon_step=?,

@@ -1,9 +1,19 @@
 # New Issue Credit Tracker
 
-Reads SEC filings for every registered corporate bond deal, extracts each tranche's
-terms with an LLM, and compares the pricing to the matching ICE BofA index.
+Tests a thesis: **the bond market prices what's in the prospectus.** Reads SEC filings for
+every registered corporate bond deal, extracts each tranche's terms with an LLM, and checks
+whether ranking, collateral, change of control puts, coupon steps and use of proceeds show
+up in new issue spreads.
 
-**Live page: https://jmchale-osu.github.io/bond-tracker/**
+**Live site: https://jmchale-osu.github.io/bond-tracker/**
+
+| Page | What it shows |
+|---|---|
+| Thesis | The claim, a scorecard of five sub-claims with verdicts, and the chart that tests them |
+| Evidence | Every bond behind each claim, what each term means, robustness checks |
+| Market | Weekly issuance, BBB and BB index spreads, cheap or rich by tenor |
+| Deals | Every tranche, searchable, each linked to its filing |
+| Method | Latest weekly note, how the thesis is measured, limits, how it is built |
 
 ## How it works
 
@@ -13,8 +23,9 @@ terms with an LLM, and compares the pricing to the matching ICE BofA index.
 | Extract | `extract.py` | Claude returns structured terms, using only numbers printed in the filing |
 | Classify | `proceeds.py` | Finds each deal's 424B5 and categorizes use of proceeds with a verbatim quote |
 | Enrich | `fred.py`, `enrich.py` | Pulls index spreads and Treasury yields from FRED, computes spread vs index |
-| Test | `analysis.py` | Acquisition vs refinancing pricing, tenor mix, supply vs rate expectations |
-| Publish | `report.py` | Builds the interactive page |
+| Test | `thesis.py` | Matched comparisons (same issuer and day, else same rating and maturity), resampled by issuer |
+| Explore | `analysis.py` | Raw cuts: tenor mix, supply vs rate expectations, structure |
+| Publish | `report.py` | Builds the five-page site into `site/`; upload that folder's contents to GitHub Pages |
 
 ## Checks
 

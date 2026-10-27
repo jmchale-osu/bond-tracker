@@ -1,17 +1,15 @@
 """
-Adds two things to the page after report.py builds it:
+Two pieces report.py puts on the site:
 
-  1. the agent's weekly recap, if agent.py has written recap.md
-  2. an "Ask the data" box that filters and counts the table (no model, no API key)
+  1. the agent's weekly recap, if agent.py has written recap.md (Method page)
+  2. an "Ask the data" box that filters and counts the table, no model or API key (Deals page)
 
-Run:  python report.py && python extras.py
+Run:  python report.py      (python extras.py does the same)
 """
 import html
-import re
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-PAGE = HERE / "report.html"
 RECAP = HERE / "recap.md"
 
 CSS = """
@@ -134,39 +132,14 @@ def recap_html():
                    if l.strip() and not l.startswith("<!--"))
     if not body:
         return ""
-    return (f'  <h2>This week, from the agent</h2>\n  <div class="recap">{body}'
+    return (f'  <h2>Latest week in the data</h2>\n  <div class="recap">{body}'
             f'<p class="stamp">Written by agent.py, which may only state numbers its database '
             f'queries returned. Covering {html.escape(stamp)}.</p></div>\n')
 
 
 def main():
-    if not PAGE.exists():
-        print("report.html not found. Run python report.py first.")
-        return
-    page = PAGE.read_text()
-
-    page = re.sub(r'\n  <h2>Ask the data</h2>.*?<p id="askout"></p>\n', "\n", page, flags=re.S)
-    page = re.sub(r'\n  <h2>This week, from the agent</h2>\n  <div class="recap">.*?</div>\n', "\n", page, flags=re.S)
-    page = page.replace(ASK_JS, "")
-
-    if "/* extras */" not in page:
-        page = page.replace("</style>", CSS + "</style>", 1)
-
-    anchor = "  <h2>The deals</h2>"
-    if anchor not in page:
-        print("could not find the deals section; page unchanged")
-        return
-    page = page.replace(anchor, ASK_HTML + "\n" + anchor, 1)
-
-    recap = recap_html()
-    if recap:
-        method = "  <h2>Method and limits</h2>"
-        page = page.replace(method, recap + "\n" + method, 1)
-
-    page = page.replace("</body>", ASK_JS + "</body>", 1)
-    PAGE.write_text(page)
-    print(f"Added the question box{' and the agent recap' if recap else ''} to {PAGE.name} "
-          f"({PAGE.stat().st_size / 1024:.0f} KB)")
+    import report
+    report.build()
 
 
 if __name__ == "__main__":

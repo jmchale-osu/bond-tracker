@@ -1,5 +1,6 @@
 .env
+.venv/
 data/
+upload_to_github/
 __pycache__/
-*.pyc
 .DS_Store

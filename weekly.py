@@ -32,6 +32,16 @@ def window():
     return max(MIN_DAYS, (date.today() - date.fromisoformat(last)).days + 7)
 
 
+def check_key():
+    """Fail in one second, not after every filing, when the API key is wrong. Listing models costs nothing."""
+    import anthropic
+    try:
+        anthropic.Anthropic().models.list(limit=1)
+    except anthropic.AuthenticationError:
+        sys.exit("The Anthropic API rejected ANTHROPIC_API_KEY (401). It may be revoked: create a new key at "
+                 "console.anthropic.com and update .env and the repository secret.")
+
+
 def run(*args):
     print(f"\n=== {' '.join(args)}", flush=True)
     subprocess.run([sys.executable, *args], cwd=HERE, check=True)
@@ -45,6 +55,7 @@ def main():
         return
     if not os.environ.get("ANTHROPIC_API_KEY"):
         sys.exit("ANTHROPIC_API_KEY is not set. Add it to .env locally, or as a repository secret on GitHub.")
+    check_key()
 
     run("backfill.py", str(days))       # new term sheets, extracted by Claude
     run("proceeds.py")                  # use of proceeds, for deals missing it

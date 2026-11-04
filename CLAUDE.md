@@ -15,7 +15,7 @@ New-issue investment-grade bond tracker. A resume project for James (recruiting 
 - The workflow runs Mondays 13:00 UTC, on demand (`gh workflow run "Weekly update" -R jmchale-osu/bond-tracker`), and republishes on any push that touches `site/`.
 
 ## Pipeline (`python weekly.py`, or `--dry-run`)
-backfill.py → proceeds.py → structure.py → issuer_info.py → fred.py → dedupe.py → enrich.py → agent.py recap → report.py
+backfill.py → proceeds.py → structure.py → issuer_info.py → fred.py → macro.py → dedupe.py → enrich.py → agent.py recap → report.py
 - Data: `data/bonds.db` (SQLite, committed). Term sheets come from EDGAR FWP/424B filings, extracted by Claude. Index spreads are ICE BofA OAS from FRED.
 - `ANTHROPIC_API_KEY` lives in `.env` locally and as a repo secret. `weekly.py` checks the key first and stops on a 401.
 
@@ -24,6 +24,7 @@ backfill.py → proceeds.py → structure.py → issuer_info.py → fred.py → 
 - Peers are matched on the same issuer, day and maturity bucket where possible; otherwise on rating bucket × maturity bucket, using the gap vs the index.
 - The range comes from a resample by issuer (1,000 draws, 5th–95th percentile).
 - Verdicts: Holding / Not holding / Mixed / Too early (fewer than 5 bonds or fewer than 3 issuers).
+- `thesis.TIMING` tests whether bonds priced around Fed, CPI and jobs days come wider. It uses the same method but sits on the Market page, off the scorecard, because timing is not a prospectus term.
 - `report.py` builds the five pages in `site/`: index, evidence, market, deals, method.
 
 ## Writing on the site

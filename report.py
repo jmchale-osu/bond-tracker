@@ -58,15 +58,60 @@ def index_spreads(conn, start):
     return [{"week": w, **v} for w, v in sorted(weekly.items())]
 
 
+def macro_data(conn, first, last):
+    """Latest readings, a two-year monthly series and the events around the deals, for the Market page."""
+    raw = {}
+    for day, label, value in conn.execute("SELECT date, label, value FROM market_data WHERE family = 'macro' ORDER BY date"):
+        raw.setdefault(label, {})[day] = value
+
+    def yoy(label):
+        out = {}
+        for day, value in raw.get(label, {}).items():
+            before = raw[label].get(f"{int(day[:4]) - 1}{day[4:]}")
+            if before:
+                out[day] = round((value / before - 1) * 100, 2)
+        return out
+
+    def month(day):
+        return date.fromisoformat(day).strftime("%b %Y")
+
+    def reading(values):
+        days = sorted(values)
+        return {"value": values[days[-1]], "month": month(days[-1]),
+                "prev": values[days[-2]], "prev_month": month(days[-2])} if len(days) > 1 else None
+
+    cpi, core, jobless = yoy("cpi"), yoy("core_pce"), raw.get("unemployment", {})
+    payrolls = raw.get("payrolls", {})
+    days = sorted(payrolls)
+    added = {b: payrolls[b] - payrolls[a] for a, b in zip(days, days[1:])}
+    fed_month = {day[:7]: value for day, value in sorted(raw.get("fed_upper", {}).items())}
+    series = [{"m": day[:7], "cpi": cpi.get(day), "core_pce": core.get(day), "unemployment": jobless.get(day),
+               "fed": fed_month.get(day[:7])} for day in sorted(set(jobless) | set(cpi) | set(core))[-24:]]
+
+    today = date.today().isoformat()
+    upper, lower = raw.get("fed_upper", {}), raw.get("fed_lower", {})
+    ten = conn.execute("SELECT date, value FROM market_data WHERE family = 'treasury' AND label = '10y' "
+                       "ORDER BY date DESC LIMIT 1").fetchone()
+    upcoming = conn.execute("SELECT MIN(date) FROM events WHERE kind = 'fomc' AND date > ?", (today,)).fetchone()[0]
+    events = conn.execute("SELECT date, kind, label FROM events WHERE date >= ? AND date <= ? ORDER BY date",
+                          (first, last)).fetchall()
+    return {
+        "cpi": reading(cpi), "core_pce": reading(core), "unemployment": reading(jobless), "payrolls": reading(added),
+        "fed": [lower[max(lower)], upper[max(upper)]] if upper and lower else None,
+        "ten": {"value": ten[1], "date": ten[0]} if ten else None, "next_fomc": upcoming, "series": series,
+        "events": [{"date": d, "kind": k, "label": label} for d, k, label in events],
+    }
+
+
 CSS = """
 :root{color-scheme:light;--bg:#fbfaf7;--surface:#fff;--line:#e3e0d8;--ink:#171614;--ink2:#56534c;
---ink3:#8a867c;--accent:#1a4f8a;--s1:#2a78d6;--s2:#eb6834;--s3:#9b978d;--chip:#f1efe9;
+--ink3:#8a867c;--accent:#1a4f8a;--s1:#2a78d6;--s2:#eb6834;--s3:#9b978d;--s4:#0f9583;--chip:#f1efe9;
 --hold:#1b7f4c;--not:#c2410c;--mixed:#a86a0c;--early:#8a867c}
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){color-scheme:dark;--bg:#15150f;--surface:#1b1b18;
 --line:#302f2a;--ink:#f7f5ef;--ink2:#c2bfb4;--ink3:#8d8a80;--accent:#7fb2ee;--s1:#3987e5;--s2:#d95926;
---s3:#6f6c63;--chip:#26261f;--hold:#4cc38a;--not:#f0844e;--mixed:#e3a63c;--early:#8d8a80}}
+--s3:#6f6c63;--s4:#2bab97;--chip:#26261f;--hold:#4cc38a;--not:#f0844e;--mixed:#e3a63c;--early:#8d8a80}}
 :root[data-theme=dark]{color-scheme:dark;--bg:#15150f;--surface:#1b1b18;--line:#302f2a;--ink:#f7f5ef;
---ink2:#c2bfb4;--ink3:#8d8a80;--accent:#7fb2ee;--s1:#3987e5;--s2:#d95926;--s3:#6f6c63;--chip:#26261f;
+--ink2:#c2bfb4;--ink3:#8d8a80;--accent:#7fb2ee;--s1:#3987e5;--s2:#d95926;--s3:#6f6c63;--s4:#2bab97;--chip:#26261f;
 --hold:#4cc38a;--not:#f0844e;--mixed:#e3a63c;--early:#8d8a80}
 *{box-sizing:border-box}
 html{scroll-padding-top:72px}
@@ -182,6 +227,12 @@ svg{width:100%;height:auto;display:block;overflow:visible}
 .axl{fill:var(--ink3);font-size:12px}
 .line{fill:none;stroke-width:2.5}
 .line.bbb{stroke:var(--s1)}.line.bb{stroke:var(--s2)}
+.line.m1{stroke:var(--s1)}.line.m2{stroke:var(--s2)}.line.m3{stroke:var(--s4)}.line.m4{stroke:var(--ink);stroke-dasharray:7 5}
+.hit{fill:transparent}.hit:hover{fill:var(--chip);opacity:.5}
+.evt{fill:var(--ink2);font-size:12px;font-weight:600}
+.stat .d{font-size:12px;color:var(--ink3)}
+.timing{max-width:460px;margin-top:16px}
+.stats.macro{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px 34px;margin-bottom:8px}
 .legend{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--ink2);margin-top:12px}
 .key{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:6px}
 .tablewrap{max-height:72vh;overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
@@ -216,7 +267,7 @@ footer{margin:72px 0 0;padding:22px 0 64px;border-top:1px solid var(--line);font
   .site{position:static}.site .in{flex-wrap:wrap;gap:4px;padding:12px 16px}.site nav{margin:0 -8px;width:calc(100% + 16px)}
   .col,.wide{padding:0 16px}h1{font-size:31px}.dek{font-size:17px}header.page{padding-top:32px}
   .forest .row,.axis{grid-template-columns:1fr;gap:4px}.axis .ticks,.axis .ends{grid-column:1}.axis>div:first-child{display:none}
-  .controls.sticky{top:0}.hide-s{display:none}.tick,.axl{font-size:26px}.panel{padding:18px 16px}}
+  .controls.sticky{top:0}.hide-s{display:none}.tick,.axl,.evt{font-size:26px}.stats.macro{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 16px}.stats.macro .v{font-size:23px}.panel{padding:18px 16px}}
 """ + EXTRAS_CSS
 
 JS = r"""
@@ -239,6 +290,9 @@ const guaranteed=g=>g==='parent'||g==='subsidiaries'||g==='both';
 const pclass=p=>p==='acquisition'?'p1':p==='refinancing'?'p2':'p3';
 const plabel=p=>({acquisition:'Acquisition',refinancing:'Refinancing',general_corporate:'General corporate',
   capex:'Capex',shareholder_returns:'Shareholder returns',mixed:'Mixed',not_stated:'Not stated'}[p]||'Not stated');
+const EVLETTER={fomc:'F',cpi:'C',jobs:'J'};
+const MSERIES=[['cpi','CPI','m1','CPI'],['core_pce','Core PCE','m2','PCE'],['unemployment','Unemployment','m3','Jobless'],
+  ['fed','Fed funds, top of range','m4','Fed']];
 const expected=c=>c.sign>0?'Expected: wider':'Expected: tighter';
 
 function ticks(lo,hi,count){
@@ -310,8 +364,8 @@ function spark(trend){
     <polyline class="ln" points="${trend.map((t,i)=>X(i)+','+Y(t[1])).join(' ')}"/></svg>
     <div class="spark-cap"><span>${trend[0][0].slice(5)}</span><span>estimate as data arrived</span><span>${trend[trend.length-1][0].slice(5)}</span></div>`;
 }
-function card(c){
-  return `<a class="card" href="evidence.html#${c.key}"><div class="top"><span class="pill ${VCLASS[c.verdict]}">${c.verdict}</span>
+function card(c,href){
+  return `<a class="card" href="${href||'evidence.html#'+c.key}"><div class="top"><span class="pill ${VCLASS[c.verdict]}">${c.verdict}</span>
     <span class="exp">${expected(c)}</span></div><h3>${esc(c.claim)}</h3>
     <div class="num">${c.est==null?'n/a':pm(c.est)}<small>bps vs peers</small></div>
     <div class="meta">${c.lo!=null?`range ${pm(c.lo)} to ${pm(c.hi)} · `:''}${c.n} bonds, ${c.issuers} issuer${c.issuers===1?'':'s'}</div>
@@ -319,7 +373,7 @@ function card(c){
 }
 function initThesis(){
   $('#forest').innerHTML=forest(THESIS.claims);
-  $('#cards').innerHTML=THESIS.claims.map(card).join('');
+  $('#cards').innerHTML=THESIS.claims.map(c=>card(c)).join('');
 }
 
 /* ---------- Evidence page ---------- */
@@ -364,7 +418,8 @@ function initEvidence(){
 function drawBars(rows){
   const by={}; rows.forEach(b=>{if(b.size)by[week(b.priced)]=(by[week(b.priced)]||0)+b.size;});
   const allWeeks=[...new Set(BONDS.map(b=>week(b.priced)))].sort();
-  const W=1000,H=220,L=50,B=30,T=10,pw=W-L-10,ph=H-B-T;
+  const evs={}; MACRO.events.forEach(e=>{(evs[week(e.date)]=evs[week(e.date)]||[]).push(e);});
+  const W=1000,H=246,L=50,B=56,T=10,pw=W-L-10,ph=H-B-T;
   const top=Math.max(...allWeeks.map(w=>by[w]||0),1), tk=ticks(0,top/1e9,3), ymax=tk[tk.length-1]*1e9||1;
   const step=pw/allWeeks.length, bw=Math.min(step-5,30);
   let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly issuance">`;
@@ -373,14 +428,37 @@ function drawBars(rows){
   allWeeks.forEach((w,i)=>{const v=by[w]||0,h=v/ymax*ph,x=L+i*step+(step-bw)/2,y=T+ph-h;
     const off=(F.week&&F.week!==w)?' off':'';
     s+=`<rect class="bar${off}" x="${x}" y="${Math.max(y,T)}" width="${bw}" height="${Math.max(h,1)}" rx="4"
-         data-week="${w}" data-tip="Week of ${w}<br>${money(v)} priced"/>`;
+         data-week="${w}" data-tip="Week of ${w}<br>${money(v)} priced${(evs[w]||[]).map(e=>`<br>${e.label}, ${e.date.slice(5)}`).join('')}"/>`;
+    if(evs[w]) s+=`<text class="evt" x="${x+bw/2}" y="${T+ph+22}" text-anchor="middle">${[...new Set(evs[w].map(e=>EVLETTER[e.kind]))].join(' ')}</text>`;
     if(i%Math.max(1,Math.ceil(allWeeks.length/6))===0)
       s+=`<text class="tick" x="${x+bw/2}" y="${H-8}" text-anchor="middle">${w.slice(5)}</text>`;});
   return s+'</svg>';
 }
+function drawMacro(){
+  const pts=MACRO.series; if(pts.length<2) return '<p class="note">No macro data.</p>';
+  const W=1000,H=286,L=50,R=130,B=46,T=14,pw=W-L-R,ph=H-B-T, gap=innerWidth<640?30:18;
+  const all=pts.flatMap(p=>MSERIES.map(([k])=>p[k])).filter(v=>v!=null);
+  const tk=ticks(Math.floor(Math.min(...all)),Math.ceil(Math.max(...all)),4), ymin=tk[0], ymax=tk[tk.length-1];
+  const x=i=>L+i/(pts.length-1)*pw, y=v=>T+ph-(v-ymin)/(ymax-ymin)*ph;
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Inflation, unemployment and the fed funds rate">`;
+  tk.forEach(v=>{s+=`<line class="grid" x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}"/><text class="tick" x="${L-8}" y="${y(v)+4}" text-anchor="end">${v}%</text>`;});
+  pts.forEach((p,i)=>{const w=pw/(pts.length-1);
+    const tipText=`<b>${p.m}</b>`+MSERIES.map(([k,n])=>p[k]==null?'':`<br>${n}: ${p[k].toFixed(1)}%`).join('');
+    s+=`<rect class="hit" x="${x(i)-w/2}" y="${T}" width="${w}" height="${ph}" data-tip="${tipText}"/>`;
+    if(i%Math.max(1,Math.ceil(pts.length/6))===0) s+=`<text class="tick" x="${x(i)}" y="${H-8}" text-anchor="middle">${p.m}</text>`;});
+  const ends=[];
+  MSERIES.forEach(([k,n,c,short])=>{let seg=[];
+    const flush=()=>{if(seg.length>1)s+=`<polyline class="line ${c}" points="${seg.join(' ')}" pointer-events="none"/>`;seg=[];};
+    pts.forEach((p,i)=>{if(p[k]==null)flush();else seg.push(x(i)+','+y(p[k]));}); flush();
+    const last=[...pts].reverse().find(p=>p[k]!=null);
+    if(last) ends.push({y:y(last[k]),text:`${short} ${last[k].toFixed(1)}`});});
+  ends.sort((a,b)=>a.y-b.y).forEach((e,i)=>{if(i&&e.y<ends[i-1].y+gap)e.y=ends[i-1].y+gap;
+    s+=`<text class="axl" x="${W-R+8}" y="${e.y+4}">${e.text}</text>`;});
+  return s+'</svg>';
+}
 function drawIndex(){
   const pts=MARKET.filter(m=>m.BBB!=null&&m.BB!=null); if(pts.length<2) return '<p class="note">No index data.</p>';
-  const W=1000,H=220,L=50,R=60,B=30,T=14,pw=W-L-R,ph=H-B-T;
+  const W=1000,H=236,L=50,R=60,B=46,T=14,pw=W-L-R,ph=H-B-T;
   const all=pts.flatMap(p=>[p.BBB,p.BB]), tk=ticks(Math.min(...all)-10,Math.max(...all)+10,4), ymin=tk[0], ymax=tk[tk.length-1];
   const x=i=>L+i/(pts.length-1)*pw, y=v=>T+ph-(v-ymin)/(ymax-ymin)*ph;
   let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="BBB and BB index spreads">`;
@@ -412,7 +490,9 @@ function drawDots(rows){
   return s+'</svg>';
 }
 function initMarket(){
-  $('#index').innerHTML=drawIndex();
+  $('#index').innerHTML=drawIndex(); $('#macrochart').innerHTML=drawMacro();
+  $('#macrolegend').innerHTML=MSERIES.map(([k,n,c])=>`<span><i class="key" style="background:var(--${{m1:'s1',m2:'s2',m3:'s4',m4:'ink'}[c]})"></i>${n}</span>`).join('');
+  if(THESIS.timing)$('#timingcard').innerHTML=card(THESIS.timing,'#timing');
   render=()=>{
     const rows=visible();
     $('#bars').innerHTML=drawBars(rows); $('#dots').innerHTML=drawDots(rows);
@@ -496,7 +576,7 @@ def shell(file, page, title, description, body, after=""):
 <div class="site"><div class="in"><a class="brand" href="index.html">New Issue Credit Tracker</a><nav>{nav}</nav></div></div>
 {body}
 <div class="col"><footer>Built by James McHale from SEC EDGAR filings (424B2, 424B5, FWP) and FRED
-(ICE BofA index OAS, Treasury yields). Personal project. Not investment advice.</footer></div>
+(ICE BofA index OAS, Treasury yields, inflation, jobs). Personal project. Not investment advice.</footer></div>
 <script src="data.js"></script><script src="app.js"></script>{after}</body></html>"""
 
 
@@ -646,14 +726,34 @@ def evidence_page(card, bonds):
                  "The bonds behind each claim in the thesis, with what each prospectus term means.", body)
 
 
-def market_page(bonds, checks, span):
+def macro_tiles(m):
+    def tile(value, label, detail):
+        return f'<div class="stat"><div class="v">{value}</div><div class="k">{label}</div><div class="d">{detail}</div></div>'
+
+    def pct(r, label):
+        return tile(f"{r['value']:.1f}%", label, f"{r['month']}, was {r['prev']:.1f}% in {r['prev_month'][:3]}") if r else ""
+
+    tiles = []
+    if m["fed"]:
+        nxt = date.fromisoformat(m["next_fomc"]).strftime("%b %-d") if m["next_fomc"] else "not yet set"
+        tiles.append(tile(f"{m['fed'][0]:.2f}–{m['fed'][1]:.2f}%", "fed funds target", f"next decision {nxt}"))
+    tiles += [pct(m["cpi"], "CPI inflation"), pct(m["core_pce"], "core PCE inflation"), pct(m["unemployment"], "unemployment")]
+    if m["payrolls"]:
+        r = m["payrolls"]
+        tiles.append(tile(f"{r['value']:+,.0f}k", "payrolls", f"{r['month']}, was {r['prev']:+,.0f}k in {r['prev_month'][:3]}"))
+    if m["ten"]:
+        tiles.append(tile(f"{m['ten']['value']:.2f}%", "10-year Treasury", m["ten"]["date"]))
+    return "".join(tiles)
+
+
+def market_page(bonds, checks, span, macro):
     checked = checks.get("OK", 0) + checks.get("MISMATCH", 0)
     body = f"""
 <header class="page col">
   <p class="kicker">Market</p>
   <h1>What the primary market priced</h1>
-  <p class="dek">Registered corporate bond supply week by week, where index spreads stand, and which new
-  deals came cheap or rich to them.</p>
+  <p class="dek">Registered corporate bond supply week by week, where index spreads and the economy stand,
+  and which new deals came cheap or rich.</p>
   <p class="byline">{span}</p>
   <div class="stats">
     <div class="stat"><div class="v" id="count">0</div><div class="k">tranches in view</div></div>
@@ -669,12 +769,27 @@ def market_page(bonds, checks, span):
 
   <h2>Weekly issuance</h2>
   <p>Click a week to filter the page to it. Click again to clear.</p>
-  <figure><div id="bars"></div><figcaption>Priced volume by week (week starting Monday).</figcaption></figure>
+  <figure><div id="bars"></div><figcaption>Priced volume by week (week starting Monday). Letters mark the week's data:
+  F is a Fed decision, C a CPI report, J a jobs report.</figcaption></figure>
 
   <h2>Where the index stands</h2>
   <p>The ICE BofA option-adjusted spread for BBB and BB corporates, the benchmarks most new deals here are
   measured against. A wider index means credit is cheaper across the board.</p>
   <figure><div id="index"></div><figcaption>Index OAS in bps, last reading each week. Source: FRED.</figcaption></figure>
+
+  <h2 id="backdrop">The macro backdrop</h2>
+  <p>Credit spreads sit on top of Treasury yields, and Treasury yields follow the Fed. The Fed in turn watches
+  two things: inflation and jobs. These are the latest readings.</p>
+  <div class="stats macro">{macro_tiles(macro)}</div>
+  <figure><div id="macrochart"></div><div class="legend" id="macrolegend"></div>
+  <figcaption>Inflation is the change from a year earlier. Monthly, last two years. The gap in the CPI and unemployment lines
+  is October 2025, when the government shutdown stopped data collection. Source: FRED.</figcaption></figure>
+
+  <h2 id="timing">Does pricing around big data cost more?</h2>
+  <p>A data day is the day of a Fed decision, CPI report or jobs report, or the business day before it. Each senior
+  unsecured bond priced on one is compared with senior unsecured bonds of the same rating and maturity priced on
+  other days, using spread vs the index that day, so a market-wide move does not count as a concession.</p>
+  <div class="timing" id="timingcard"></div>
 
   <h2>Cheap or rich, by tenor</h2>
   <p>Each dot is one bond: its spread minus the matching index on the day it priced. Above the dashed line
@@ -734,6 +849,9 @@ def method_page(bonds, checks, ranked):
     <li><b>Verdict.</b> <i>Holding</i> if the whole range sits on the expected side of zero, <i>Not holding</i> if it
     sits on the other side, <i>Mixed</i> if it crosses zero. <i>Too early</i> below {thesis.MIN_MATCHED} bonds or
     {thesis.MIN_ISSUERS} issuers.</li>
+    <li><b>Timing.</b> The Market page tests one more idea the same way: whether senior unsecured bonds priced on or the
+    business day before a Fed decision, CPI report or jobs report come wider than peers priced on other days. It is kept
+    off the scorecard because timing is not a prospectus term.</li>
     <li><b>Trend.</b> The estimate recomputed with only the deals priced by the end of each week, so you can see
     whether a reading is settling or still moving.</li>
   </ul>
@@ -745,6 +863,8 @@ def method_page(bonds, checks, ranked):
     <li>Covenants are not assigned at random: issuers offer protection when buyers ask for it, so a feature's
     premium partly reflects the kind of company that offers it.</li>
     <li>Filings do not disclose order books, price talk or the new issue concession.</li>
+    <li>The timing test uses scheduled dates, not surprises: a CPI report that matches forecasts counts the same as one
+    that shocks the market. Issuers also choose when to come, so the bonds priced on data days are not a random sample.</li>
     <li>{ranked} of {len(bonds)} tranches have a stated ranking. {checks.get('MISMATCH', 0)} failed the pricing
     math check and are flagged, not discarded.</li>
   </ul>
@@ -758,6 +878,8 @@ def method_page(bonds, checks, ranked):
     <tr><td>Proceeds</td><td><code>proceeds.py</code> classifies use of proceeds with a verbatim quote.</td></tr>
     <tr><td>Check</td><td>Every tranche must satisfy benchmark yield + spread = yield. <code>dedupe.py</code> merges a deal filed twice.</td></tr>
     <tr><td>Enrich</td><td><code>fred.py</code> and <code>enrich.py</code> pull index spreads and Treasury yields from FRED.</td></tr>
+    <tr><td>Macro</td><td><code>macro.py</code> pulls inflation, jobs and the fed funds target from FRED, Fed decision days from
+    federalreserve.gov and CPI and jobs report dates from ALFRED.</td></tr>
     <tr><td>Test</td><td><code>thesis.py</code> runs the matched comparisons and resampling behind the scorecard.</td></tr>
     <tr><td>Write</td><td><code>agent.py</code> drafts the weekly note, limited to numbers its database queries return.</td></tr>
     <tr><td>Publish</td><td><code>report.py</code> builds this site.</td></tr>
@@ -778,17 +900,21 @@ def build():
     span = f"{min(dates)} to {max(dates)}" if dates else "no deals yet"
     start = (date.fromisoformat(min(dates)) - timedelta(days=56)).isoformat() if dates else "2000-01-01"
     ranked = sum(1 for b in bonds if b["rank"] and b["rank"] != "not_stated")
+    first = date.fromisoformat(min(dates))
+    macro = macro_data(conn, (first - timedelta(days=first.weekday())).isoformat(),
+                       (date.fromisoformat(max(dates)) + timedelta(days=6)).isoformat())
 
     SITE.mkdir(exist_ok=True)
     (SITE / "style.css").write_text(CSS)
     (SITE / "app.js").write_text(JS)
     (SITE / "data.js").write_text(
         f"const BONDS={json.dumps(bonds)};\nconst BUCKETS={json.dumps(BUCKETS)};\n"
-        f"const THESIS={json.dumps(card)};\nconst MARKET={json.dumps(index_spreads(conn, start))};\n")
+        f"const THESIS={json.dumps(card)};\nconst MARKET={json.dumps(index_spreads(conn, start))};\n"
+        f"const MACRO={json.dumps(macro)};\n")
     pages = {
         "index.html": thesis_page(card, bonds),
         "evidence.html": evidence_page(card, bonds),
-        "market.html": market_page(bonds, checks, span),
+        "market.html": market_page(bonds, checks, span, macro),
         "deals.html": deals_page(bonds),
         "method.html": method_page(bonds, checks, ranked),
     }

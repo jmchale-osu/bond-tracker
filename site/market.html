@@ -11,8 +11,8 @@
 <header class="page col">
   <p class="kicker">Market</p>
   <h1>What the primary market priced</h1>
-  <p class="dek">Registered corporate bond supply week by week, where index spreads stand, and which new
-  deals came cheap or rich to them.</p>
+  <p class="dek">Registered corporate bond supply week by week, where index spreads and the economy stand,
+  and which new deals came cheap or rich.</p>
   <p class="byline">2026-07-09 to 2026-10-06</p>
   <div class="stats">
     <div class="stat"><div class="v" id="count">0</div><div class="k">tranches in view</div></div>
@@ -28,12 +28,27 @@
 
   <h2>Weekly issuance</h2>
   <p>Click a week to filter the page to it. Click again to clear.</p>
-  <figure><div id="bars"></div><figcaption>Priced volume by week (week starting Monday).</figcaption></figure>
+  <figure><div id="bars"></div><figcaption>Priced volume by week (week starting Monday). Letters mark the week's data:
+  F is a Fed decision, C a CPI report, J a jobs report.</figcaption></figure>
 
   <h2>Where the index stands</h2>
   <p>The ICE BofA option-adjusted spread for BBB and BB corporates, the benchmarks most new deals here are
   measured against. A wider index means credit is cheaper across the board.</p>
   <figure><div id="index"></div><figcaption>Index OAS in bps, last reading each week. Source: FRED.</figcaption></figure>
+
+  <h2 id="backdrop">The macro backdrop</h2>
+  <p>Credit spreads sit on top of Treasury yields, and Treasury yields follow the Fed. The Fed in turn watches
+  two things: inflation and jobs. These are the latest readings.</p>
+  <div class="stats macro"><div class="stat"><div class="v">3.75–4.00%</div><div class="k">fed funds target</div><div class="d">next decision Dec 9</div></div><div class="stat"><div class="v">3.7%</div><div class="k">CPI inflation</div><div class="d">Sep 2026, was 3.4% in Aug</div></div><div class="stat"><div class="v">3.1%</div><div class="k">core PCE inflation</div><div class="d">Sep 2026, was 3.0% in Aug</div></div><div class="stat"><div class="v">4.2%</div><div class="k">unemployment</div><div class="d">Sep 2026, was 4.1% in Aug</div></div><div class="stat"><div class="v">+29k</div><div class="k">payrolls</div><div class="d">Sep 2026, was +133k in Aug</div></div><div class="stat"><div class="v">4.91%</div><div class="k">10-year Treasury</div><div class="d">2026-11-02</div></div></div>
+  <figure><div id="macrochart"></div><div class="legend" id="macrolegend"></div>
+  <figcaption>Inflation is the change from a year earlier. Monthly, last two years. The gap in the CPI and unemployment lines
+  is October 2025, when the government shutdown stopped data collection. Source: FRED.</figcaption></figure>
+
+  <h2 id="timing">Does pricing around big data cost more?</h2>
+  <p>A data day is the day of a Fed decision, CPI report or jobs report, or the business day before it. Each senior
+  unsecured bond priced on one is compared with senior unsecured bonds of the same rating and maturity priced on
+  other days, using spread vs the index that day, so a market-wide move does not count as a concession.</p>
+  <div class="timing" id="timingcard"></div>
 
   <h2>Cheap or rich, by tenor</h2>
   <p>Each dot is one bond: its spread minus the matching index on the day it priced. Above the dashed line
@@ -42,5 +57,5 @@
   <figcaption>Spread vs index in bps, by maturity bucket.</figcaption></figure>
 </main>
 <div class="col"><footer>Built by James McHale from SEC EDGAR filings (424B2, 424B5, FWP) and FRED
-(ICE BofA index OAS, Treasury yields). Personal project. Not investment advice.</footer></div>
+(ICE BofA index OAS, Treasury yields, inflation, jobs). Personal project. Not investment advice.</footer></div>
 <script src="data.js"></script><script src="app.js"></script></body></html>

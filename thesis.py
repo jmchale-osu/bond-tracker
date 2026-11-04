@@ -13,6 +13,7 @@ that rests on one or two companies shows up as a wide range.
     python thesis.py        print the scorecard
 """
 import random
+import sqlite3
 from collections import Counter
 from datetime import date, timedelta
 from statistics import median
@@ -53,8 +54,29 @@ CLAIMS = [
      +1, lambda b: b["proceeds"] == "acquisition", lambda b: b["proceeds"] == "refinancing"),
 ]
 
+# Not a prospectus term, so it stays off the scorecard and shows on the Market page. Same method.
+TIMING = ("timing", "Deals priced around big data pay up",
+          "Issuers usually avoid pricing into a Fed decision, CPI report or jobs report. Bonds that do "
+          "take that risk on, so buyers should ask for more than the index that day.",
+          +1, lambda b: senior(b) and b["event"], lambda b: senior(b) and not b["event"])
+
+
+def event_days(conn):
+    """Each Fed decision, CPI report and jobs report day, plus the business day before it."""
+    try:
+        rows = conn.execute("SELECT DISTINCT date FROM events").fetchall()
+    except sqlite3.OperationalError:       # macro.py has not run yet
+        return set()
+    days = set()
+    for (day,) in rows:
+        d = date.fromisoformat(day)
+        days.add(day)
+        days.add((d - timedelta(days=3 if d.weekday() == 0 else 1)).isoformat())
+    return days
+
 
 def load(conn):
+    events = event_days(conn)
     rows = conn.execute("""
         SELECT t.bond_key, d.issuer, t.spread_bps, t.spread_vs_index_bps, t.maturity_bucket, t.rating_moodys,
                t.rating_sp, d.ranking, d.change_of_control, d.coupon_step, d.use_of_proceeds,
@@ -68,7 +90,7 @@ def load(conn):
         if rating and priced:
             out.append({"key": key, "issuer": issuer, "spread": spread, "gap": gap, "cell": (rating, bucket),
                         "rank": rank, "coc": bool(coc), "step": bool(step),
-                        "proceeds": proceeds, "priced": priced})
+                        "proceeds": proceeds, "priced": priced, "event": priced in events})
     return out
 
 
@@ -138,45 +160,49 @@ def week_ends(bonds):
     return sorted(ends)
 
 
+def score(claim, bonds, weeks, rng):
+    key, title, why, sign, has, peer = claim
+    pairs = matched(bonds, has, peer)
+    lo, hi = interval(pairs, rng)
+    trend = []
+    for end in weeks:
+        so_far = matched([b for b in bonds if b["priced"] <= end], has, peer)
+        if len(so_far) >= 3:
+            trend.append([end, round(estimate(so_far), 1), len(so_far)])
+    est = estimate(pairs)
+    issuers = len({b["issuer"] for b, *_ in pairs})
+    # Robustness: without specialty finance lenders, and how much rests on one company
+    no_sf = matched([b for b in bonds if not is_bdc(b["issuer"])], has, peer)
+    top = Counter(b["issuer"] for b, *_ in pairs).most_common(1)
+    return {
+        "key": key, "claim": title, "why": why, "sign": sign,
+        "est": None if est is None else round(est, 1),
+        "lo": None if lo is None else round(lo, 1), "hi": None if hi is None else round(hi, 1),
+        "n": len(pairs), "issuers": issuers, "peers": sum(1 for b in bonds if peer(b)),
+        "verdict": verdict(len(pairs), issuers, lo, hi, sign), "trend": trend,
+        "ex_sf": round(estimate(no_sf), 1) if no_sf else None, "n_ex_sf": len(no_sf),
+        "top_issuer": top[0][0] if top else None,
+        "top_share": round(top[0][1] / len(pairs), 2) if top else None,
+        "points": [{"key": b["key"], "issuer": b["issuer"], "cell": " ".join(b["cell"]),
+                    "diff": round(v - median(p), 1), "npeers": len(p), "how": how}
+                   for b, v, p, how in pairs],
+    }
+
+
 def scorecard(conn=None):
     conn = conn or db.connect()
     bonds = load(conn)
     rng = random.Random(7)
     weeks = week_ends(bonds)
-    claims = []
-    for key, claim, why, sign, has, peer in CLAIMS:
-        pairs = matched(bonds, has, peer)
-        lo, hi = interval(pairs, rng)
-        trend = []
-        for end in weeks:
-            so_far = matched([b for b in bonds if b["priced"] <= end], has, peer)
-            if len(so_far) >= 3:
-                trend.append([end, round(estimate(so_far), 1), len(so_far)])
-        est = estimate(pairs)
-        issuers = len({b["issuer"] for b, *_ in pairs})
-        # Robustness: without specialty finance lenders, and how much rests on one company
-        no_sf = matched([b for b in bonds if not is_bdc(b["issuer"])], has, peer)
-        top = Counter(b["issuer"] for b, *_ in pairs).most_common(1)
-        claims.append({
-            "key": key, "claim": claim, "why": why, "sign": sign,
-            "est": None if est is None else round(est, 1),
-            "lo": None if lo is None else round(lo, 1), "hi": None if hi is None else round(hi, 1),
-            "n": len(pairs), "issuers": issuers, "peers": sum(1 for b in bonds if peer(b)),
-            "verdict": verdict(len(pairs), issuers, lo, hi, sign), "trend": trend,
-            "ex_sf": round(estimate(no_sf), 1) if no_sf else None, "n_ex_sf": len(no_sf),
-            "top_issuer": top[0][0] if top else None,
-            "top_share": round(top[0][1] / len(pairs), 2) if top else None,
-            "points": [{"key": b["key"], "issuer": b["issuer"], "cell": " ".join(b["cell"]),
-                        "diff": round(v - median(p), 1), "npeers": len(p), "how": how}
-                       for b, v, p, how in pairs],
-        })
-    return {"claims": claims, "bonds": len(bonds), "as_of": max(b["priced"] for b in bonds)}
+    claims = [score(claim, bonds, weeks, rng) for claim in CLAIMS]
+    timing = score(TIMING, bonds, weeks, rng) if any(b["event"] for b in bonds) else None
+    return {"claims": claims, "timing": timing, "bonds": len(bonds), "as_of": max(b["priced"] for b in bonds)}
 
 
 if __name__ == "__main__":
     card = scorecard()
     print(f"{card['bonds']} bonds with a rating, tenor and index comparison, through {card['as_of']}\n")
-    for c in card["claims"]:
+    for c in card["claims"] + [card["timing"]] * bool(card["timing"]):
         est = "n/a" if c["est"] is None else f"{c['est']:+.0f} bps"
         span = "" if c["lo"] is None else f"  range {c['lo']:+.0f} to {c['hi']:+.0f}"
         print(f"  {c['verdict']:12} {c['claim']:44} {est:>9}{span}  {c['n']} bonds, {c['issuers']} issuers")

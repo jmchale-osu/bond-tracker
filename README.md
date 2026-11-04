@@ -23,6 +23,7 @@ up in new issue spreads.
 | Extract | `extract.py` | Claude returns structured terms, using only numbers printed in the filing |
 | Classify | `proceeds.py` | Finds each deal's 424B5 and categorizes use of proceeds with a verbatim quote |
 | Enrich | `fred.py`, `enrich.py` | Pulls index spreads and Treasury yields from FRED, computes spread vs index |
+| Macro | `macro.py` | Pulls inflation, jobs and the fed funds target from FRED, plus Fed decision and CPI and jobs report dates |
 | Test | `thesis.py` | Matched comparisons (same issuer and day, else same rating and maturity), resampled by issuer |
 | Explore | `analysis.py` | Raw cuts: tenor mix, supply vs rate expectations, structure |
 | Publish | `report.py` | Builds the five-page site into `site/`; upload that folder's contents to GitHub Pages |

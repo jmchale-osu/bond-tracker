@@ -62,6 +62,7 @@ def main():
     run("structure.py")                 # ranking, guarantees, CoC, coupon steps, for deals missing them
     run("issuer_info.py")               # sector and domicile from EDGAR
     run("fred.py")                      # index spreads and Treasury yields
+    run("macro.py")                     # inflation, jobs, the Fed's rate, and data release days
     run("dedupe.py")                    # a deal filed twice counts once
     run("enrich.py")                    # spread vs index
     run("agent.py", "recap")            # the weekly note

@@ -31,6 +31,9 @@
     <li><b>Verdict.</b> <i>Holding</i> if the whole range sits on the expected side of zero, <i>Not holding</i> if it
     sits on the other side, <i>Mixed</i> if it crosses zero. <i>Too early</i> below 5 bonds or
     3 issuers.</li>
+    <li><b>Timing.</b> The Market page tests one more idea the same way: whether senior unsecured bonds priced on or the
+    business day before a Fed decision, CPI report or jobs report come wider than peers priced on other days. It is kept
+    off the scorecard because timing is not a prospectus term.</li>
     <li><b>Trend.</b> The estimate recomputed with only the deals priced by the end of each week, so you can see
     whether a reading is settling or still moving.</li>
   </ul>
@@ -42,6 +45,8 @@
     <li>Covenants are not assigned at random: issuers offer protection when buyers ask for it, so a feature's
     premium partly reflects the kind of company that offers it.</li>
     <li>Filings do not disclose order books, price talk or the new issue concession.</li>
+    <li>The timing test uses scheduled dates, not surprises: a CPI report that matches forecasts counts the same as one
+    that shocks the market. Issuers also choose when to come, so the bonds priced on data days are not a random sample.</li>
     <li>208 of 215 tranches have a stated ranking. 9 failed the pricing
     math check and are flagged, not discarded.</li>
   </ul>
@@ -55,11 +60,13 @@
     <tr><td>Proceeds</td><td><code>proceeds.py</code> classifies use of proceeds with a verbatim quote.</td></tr>
     <tr><td>Check</td><td>Every tranche must satisfy benchmark yield + spread = yield. <code>dedupe.py</code> merges a deal filed twice.</td></tr>
     <tr><td>Enrich</td><td><code>fred.py</code> and <code>enrich.py</code> pull index spreads and Treasury yields from FRED.</td></tr>
+    <tr><td>Macro</td><td><code>macro.py</code> pulls inflation, jobs and the fed funds target from FRED, Fed decision days from
+    federalreserve.gov and CPI and jobs report dates from ALFRED.</td></tr>
     <tr><td>Test</td><td><code>thesis.py</code> runs the matched comparisons and resampling behind the scorecard.</td></tr>
     <tr><td>Write</td><td><code>agent.py</code> drafts the weekly note, limited to numbers its database queries return.</td></tr>
     <tr><td>Publish</td><td><code>report.py</code> builds this site.</td></tr>
   </table>
 </main>
 <div class="col"><footer>Built by James McHale from SEC EDGAR filings (424B2, 424B5, FWP) and FRED
-(ICE BofA index OAS, Treasury yields). Personal project. Not investment advice.</footer></div>
+(ICE BofA index OAS, Treasury yields, inflation, jobs). Personal project. Not investment advice.</footer></div>
 <script src="data.js"></script><script src="app.js"></script></body></html>

@@ -18,6 +18,9 @@ const guaranteed=g=>g==='parent'||g==='subsidiaries'||g==='both';
 const pclass=p=>p==='acquisition'?'p1':p==='refinancing'?'p2':'p3';
 const plabel=p=>({acquisition:'Acquisition',refinancing:'Refinancing',general_corporate:'General corporate',
   capex:'Capex',shareholder_returns:'Shareholder returns',mixed:'Mixed',not_stated:'Not stated'}[p]||'Not stated');
+const EVLETTER={fomc:'F',cpi:'C',jobs:'J'};
+const MSERIES=[['cpi','CPI','m1','CPI'],['core_pce','Core PCE','m2','PCE'],['unemployment','Unemployment','m3','Jobless'],
+  ['fed','Fed funds, top of range','m4','Fed']];
 const expected=c=>c.sign>0?'Expected: wider':'Expected: tighter';
 
 function ticks(lo,hi,count){
@@ -89,8 +92,8 @@ function spark(trend){
     <polyline class="ln" points="${trend.map((t,i)=>X(i)+','+Y(t[1])).join(' ')}"/></svg>
     <div class="spark-cap"><span>${trend[0][0].slice(5)}</span><span>estimate as data arrived</span><span>${trend[trend.length-1][0].slice(5)}</span></div>`;
 }
-function card(c){
-  return `<a class="card" href="evidence.html#${c.key}"><div class="top"><span class="pill ${VCLASS[c.verdict]}">${c.verdict}</span>
+function card(c,href){
+  return `<a class="card" href="${href||'evidence.html#'+c.key}"><div class="top"><span class="pill ${VCLASS[c.verdict]}">${c.verdict}</span>
     <span class="exp">${expected(c)}</span></div><h3>${esc(c.claim)}</h3>
     <div class="num">${c.est==null?'n/a':pm(c.est)}<small>bps vs peers</small></div>
     <div class="meta">${c.lo!=null?`range ${pm(c.lo)} to ${pm(c.hi)} · `:''}${c.n} bonds, ${c.issuers} issuer${c.issuers===1?'':'s'}</div>
@@ -98,7 +101,7 @@ function card(c){
 }
 function initThesis(){
   $('#forest').innerHTML=forest(THESIS.claims);
-  $('#cards').innerHTML=THESIS.claims.map(card).join('');
+  $('#cards').innerHTML=THESIS.claims.map(c=>card(c)).join('');
 }
 
 /* ---------- Evidence page ---------- */
@@ -143,7 +146,8 @@ function initEvidence(){
 function drawBars(rows){
   const by={}; rows.forEach(b=>{if(b.size)by[week(b.priced)]=(by[week(b.priced)]||0)+b.size;});
   const allWeeks=[...new Set(BONDS.map(b=>week(b.priced)))].sort();
-  const W=1000,H=220,L=50,B=30,T=10,pw=W-L-10,ph=H-B-T;
+  const evs={}; MACRO.events.forEach(e=>{(evs[week(e.date)]=evs[week(e.date)]||[]).push(e);});
+  const W=1000,H=246,L=50,B=56,T=10,pw=W-L-10,ph=H-B-T;
   const top=Math.max(...allWeeks.map(w=>by[w]||0),1), tk=ticks(0,top/1e9,3), ymax=tk[tk.length-1]*1e9||1;
   const step=pw/allWeeks.length, bw=Math.min(step-5,30);
   let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly issuance">`;
@@ -152,14 +156,37 @@ function drawBars(rows){
   allWeeks.forEach((w,i)=>{const v=by[w]||0,h=v/ymax*ph,x=L+i*step+(step-bw)/2,y=T+ph-h;
     const off=(F.week&&F.week!==w)?' off':'';
     s+=`<rect class="bar${off}" x="${x}" y="${Math.max(y,T)}" width="${bw}" height="${Math.max(h,1)}" rx="4"
-         data-week="${w}" data-tip="Week of ${w}<br>${money(v)} priced"/>`;
+         data-week="${w}" data-tip="Week of ${w}<br>${money(v)} priced${(evs[w]||[]).map(e=>`<br>${e.label}, ${e.date.slice(5)}`).join('')}"/>`;
+    if(evs[w]) s+=`<text class="evt" x="${x+bw/2}" y="${T+ph+22}" text-anchor="middle">${[...new Set(evs[w].map(e=>EVLETTER[e.kind]))].join(' ')}</text>`;
     if(i%Math.max(1,Math.ceil(allWeeks.length/6))===0)
       s+=`<text class="tick" x="${x+bw/2}" y="${H-8}" text-anchor="middle">${w.slice(5)}</text>`;});
   return s+'</svg>';
 }
+function drawMacro(){
+  const pts=MACRO.series; if(pts.length<2) return '<p class="note">No macro data.</p>';
+  const W=1000,H=286,L=50,R=130,B=46,T=14,pw=W-L-R,ph=H-B-T, gap=innerWidth<640?30:18;
+  const all=pts.flatMap(p=>MSERIES.map(([k])=>p[k])).filter(v=>v!=null);
+  const tk=ticks(Math.floor(Math.min(...all)),Math.ceil(Math.max(...all)),4), ymin=tk[0], ymax=tk[tk.length-1];
+  const x=i=>L+i/(pts.length-1)*pw, y=v=>T+ph-(v-ymin)/(ymax-ymin)*ph;
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Inflation, unemployment and the fed funds rate">`;
+  tk.forEach(v=>{s+=`<line class="grid" x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}"/><text class="tick" x="${L-8}" y="${y(v)+4}" text-anchor="end">${v}%</text>`;});
+  pts.forEach((p,i)=>{const w=pw/(pts.length-1);
+    const tipText=`<b>${p.m}</b>`+MSERIES.map(([k,n])=>p[k]==null?'':`<br>${n}: ${p[k].toFixed(1)}%`).join('');
+    s+=`<rect class="hit" x="${x(i)-w/2}" y="${T}" width="${w}" height="${ph}" data-tip="${tipText}"/>`;
+    if(i%Math.max(1,Math.ceil(pts.length/6))===0) s+=`<text class="tick" x="${x(i)}" y="${H-8}" text-anchor="middle">${p.m}</text>`;});
+  const ends=[];
+  MSERIES.forEach(([k,n,c,short])=>{let seg=[];
+    const flush=()=>{if(seg.length>1)s+=`<polyline class="line ${c}" points="${seg.join(' ')}" pointer-events="none"/>`;seg=[];};
+    pts.forEach((p,i)=>{if(p[k]==null)flush();else seg.push(x(i)+','+y(p[k]));}); flush();
+    const last=[...pts].reverse().find(p=>p[k]!=null);
+    if(last) ends.push({y:y(last[k]),text:`${short} ${last[k].toFixed(1)}`});});
+  ends.sort((a,b)=>a.y-b.y).forEach((e,i)=>{if(i&&e.y<ends[i-1].y+gap)e.y=ends[i-1].y+gap;
+    s+=`<text class="axl" x="${W-R+8}" y="${e.y+4}">${e.text}</text>`;});
+  return s+'</svg>';
+}
 function drawIndex(){
   const pts=MARKET.filter(m=>m.BBB!=null&&m.BB!=null); if(pts.length<2) return '<p class="note">No index data.</p>';
-  const W=1000,H=220,L=50,R=60,B=30,T=14,pw=W-L-R,ph=H-B-T;
+  const W=1000,H=236,L=50,R=60,B=46,T=14,pw=W-L-R,ph=H-B-T;
   const all=pts.flatMap(p=>[p.BBB,p.BB]), tk=ticks(Math.min(...all)-10,Math.max(...all)+10,4), ymin=tk[0], ymax=tk[tk.length-1];
   const x=i=>L+i/(pts.length-1)*pw, y=v=>T+ph-(v-ymin)/(ymax-ymin)*ph;
   let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="BBB and BB index spreads">`;
@@ -191,7 +218,9 @@ function drawDots(rows){
   return s+'</svg>';
 }
 function initMarket(){
-  $('#index').innerHTML=drawIndex();
+  $('#index').innerHTML=drawIndex(); $('#macrochart').innerHTML=drawMacro();
+  $('#macrolegend').innerHTML=MSERIES.map(([k,n,c])=>`<span><i class="key" style="background:var(--${{m1:'s1',m2:'s2',m3:'s4',m4:'ink'}[c]})"></i>${n}</span>`).join('');
+  if(THESIS.timing)$('#timingcard').innerHTML=card(THESIS.timing,'#timing');
   render=()=>{
     const rows=visible();
     $('#bars').innerHTML=drawBars(rows); $('#dots').innerHTML=drawDots(rows);

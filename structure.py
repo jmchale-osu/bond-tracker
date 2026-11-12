@@ -4,24 +4,23 @@ ranking, security, guarantees, change of control protection, coupon steps.
 
     python structure.py --limit 5    try a few first
     python structure.py              everything missing
-    python structure.py --redo       re-read every deal (use after changing this file)
+    python structure.py --redo       re-read every deal (use after changing rules.py)
+    python structure.py --check      compare with what is stored, change nothing
 
-Costs roughly a cent per deal. Run migrate_v2.py once before this.
+Rule-based (rules.py), so it costs nothing.
 """
 import re
 import sys
 from pathlib import Path
 from datetime import date, timedelta
 
-from dotenv import load_dotenv
-from anthropic import Anthropic
 from edgar import set_identity, Company
 
 import db
-from extract import MODEL
+import rules
+from parse_fwp import get_html, rows_of
 
-load_dotenv()
-set_identity("James McHale jtmchale912@gmail.com")
+set_identity(db.SEC_IDENTITY)
 
 # The parts of a prospectus where these terms live
 SECTIONS = [
@@ -30,59 +29,6 @@ SECTIONS = [
     re.compile(r"change of control", re.I),
     re.compile(r"interest rate adjustment|coupon step|rating event|step[- ]up", re.I),
 ]
-
-TOOL = {
-    "name": "record_structure",
-    "description": "Record the structural terms of these notes.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "ranking": {
-                "type": "string",
-                "enum": ["senior_unsecured", "senior_secured", "first_mortgage",
-                         "subordinated", "junior_subordinated", "other", "not_stated"],
-            },
-            "is_secured": {"type": "boolean"},
-            "guarantees": {
-                "type": "string",
-                "enum": ["none", "parent", "subsidiaries", "both", "not_stated"],
-                "description": ("who guarantees the notes. A finance subsidiary's notes guaranteed by the "
-                                "parent company are 'parent'. Operating subsidiaries guaranteeing the parent's "
-                                "notes are 'subsidiaries'."),
-            },
-            "guarantor_note": {"type": ["string", "null"], "description": "under 120 characters"},
-            "change_of_control": {
-                "type": "boolean",
-                "description": "true only if holders can require repurchase on a change of control",
-            },
-            "change_of_control_price": {
-                "type": ["number", "null"],
-                "description": "percent of principal, usually 101. null if there is no such provision",
-            },
-            "coupon_step": {
-                "type": "boolean",
-                "description": ("true only if the interest rate on these notes rises when their credit "
-                                "ratings are downgraded, or on a sustainability-linked target miss. A change "
-                                "of control repurchase that needs a rating downgrade to trigger is NOT a coupon step."),
-            },
-            "coupon_step_note": {"type": ["string", "null"], "description": "under 120 characters"},
-            "quote": {"type": "string", "description": "verbatim sentence on ranking, under 200 characters"},
-        },
-        "required": ["ranking", "is_secured", "guarantees", "change_of_control", "coupon_step", "quote"],
-    },
-}
-
-PROMPT = """Below are excerpts from a corporate bond offering: the pricing term sheet and, when
-we found it, the prospectus supplement for the same notes. Record the structural terms.
-
-Only report what the documents say. The prospectus supplement is the authority on ranking,
-security and guarantees; the term sheet often lists change of control terms. If neither covers
-something, use "not_stated" or false rather than assuming the market standard. Use guarantees
-"none" only when the document says the notes are not guaranteed, or describes them as solely
-the issuer's obligations.
-
-{text}"""
-
 
 RAW_DIR = Path(__file__).resolve().parent / "data" / "raw"
 
@@ -169,7 +115,7 @@ def candidates(cik, filing_date, window):
 def find_prospectus(conn, accession, cik, filing_date, window=21):
     """The prospectus supplement that contains this deal's CUSIP, or failing that its coupon."""
     cusips, coupons = deal_keys(conn, accession)
-    fallback = None
+    fallback = near = None
     for f in candidates(cik, filing_date, window):
         text = filing_text(f)
         if len(text) < 2000:
@@ -179,7 +125,11 @@ def find_prospectus(conn, accession, cik, filing_date, window=21):
             return text, "cusip"
         if fallback is None and coupons and any(c in text for c in coupons):
             fallback = text
-    return (fallback, "coupon") if fallback else (None, None)
+        if near is None and abs((f.filing_date - filing_date).days) <= 2 and re.search(r"preliminary prospectus supplement|subject to completion", text[:6000], re.I):
+            near = text           # the preliminary prospectus for this deal: no coupon yet, same structure
+    if fallback:
+        return fallback, "coupon"
+    return (near, "preliminary") if near else (None, None)
 
 
 def excerpts(text, window=3000, cap=16000):
@@ -220,75 +170,72 @@ def check_ranking(conn, accession, ranking):
     return ranking
 
 
+def read(conn, accession, issuer, filing_date, url):
+    """The structure terms of one deal, from its term sheet and (when found) its prospectus."""
+    cik = url.split("/data/")[1].split("/")[0] if url and "/data/" in url else None
+    sheet = " ".join(" ".join(r) for r in rows_of(get_html(accession)))
+    prospectus, matched = find_prospectus(conn, accession, cik, date.fromisoformat(filing_date))
+    extra = excerpts(prospectus) if prospectus else ""
+    both = sheet + " " + extra
+    titles = [t for (t,) in conn.execute("SELECT title FROM tranches WHERE accession = ?", (accession,))]
+    rank = rules.ranking(titles, sheet, extra)
+    coc, coc_price = rules.change_of_control(both)
+    step, step_note = rules.coupon_step(both)
+    if step and re.search(r"change of control|repurchase", step_note or "", re.I):
+        step, step_note = False, None
+    source = "fwp" + (f"+424b:{matched}" if extra else "")
+    return {"ranking": rank, "is_secured": int(rank in ("senior_secured", "first_mortgage")),
+            "guarantees": rules.guarantees(issuer, both), "guarantor_note": None,
+            "change_of_control": int(coc), "change_of_control_price": coc_price,
+            "coupon_step": int(step), "coupon_step_note": step_note,
+            "quote": None, "source": source + "+rules"}
+
+
 def main():
     limit = int(sys.argv[sys.argv.index("--limit") + 1]) if "--limit" in sys.argv else None
-    redo = "--redo" in sys.argv
+    redo, check = "--redo" in sys.argv, "--check" in sys.argv
     conn = db.connect()
+    where = "" if redo or check else "WHERE ranking IS NULL"
     rows = conn.execute(f"""
-        SELECT accession, issuer, filing_date, url FROM deals
-        {"WHERE structure_source IS NULL OR structure_source NOT LIKE '%424b:%'" if redo
-         else "WHERE ranking IS NULL"} ORDER BY filing_date DESC
+        SELECT accession, issuer, filing_date, url, ranking, guarantees, change_of_control, coupon_step
+        FROM deals {where} ORDER BY filing_date DESC
     """).fetchall()
+    if check:
+        rows = [r for r in rows if r[4] is not None]
     if limit:
         rows = rows[:limit]
-    print(f"{len(rows)} deals to read{' (redo)' if redo else ''}\n")
+    print(f"{len(rows)} deals to read\n")
 
-    client = Anthropic()
-    filled = missed = 0
-    for i, (accession, issuer, filing_date, url) in enumerate(rows, 1):
-        print(f"[{i}/{len(rows)}] {(issuer or '')[:42]}")
-        cik = url.split("/data/")[1].split("/")[0] if url and "/data/" in url else None
+    agree = {k: [0, 0] for k in ("ranking", "guarantees", "change_of_control", "coupon_step")}
+    for i, (accession, issuer, filing_date, url, *stored) in enumerate(rows, 1):
         try:
-            fwp = cached_text(accession)
-            fwp_part = " ".join(fwp.split())[:6000]
-            prospectus, matched = find_prospectus(conn, accession, cik, date.fromisoformat(filing_date))
-            pro_part = excerpts(prospectus) if prospectus else ""
-
-            parts = []
-            if fwp_part:
-                parts.append(f"<term_sheet>\n{fwp_part}\n</term_sheet>")
-            if pro_part:
-                parts.append(f"<prospectus_supplement>\n{pro_part}\n</prospectus_supplement>")
-            source = "+".join(n for n, x in (("fwp", fwp_part), (f"424b:{matched}", pro_part)) if x)
-            if sum(len(x) for x in (fwp_part, pro_part)) < 400:
-                print("  nothing to read\n")
-                missed += 1
-                continue
-
-            response = client.messages.create(
-                model=MODEL, max_tokens=800, tools=[TOOL],
-                tool_choice={"type": "tool", "name": "record_structure"},
-                messages=[{"role": "user", "content": PROMPT.format(text="\n\n".join(parts))}],
-            )
-            r = next(b.input for b in response.content if b.type == "tool_use")
-            note = (r.get("coupon_step_note") or "").lower()
-            if r["coupon_step"] and ("change of control" in note or "repurchase" in note):
-                r["coupon_step"] = False      # a rating trigger on the put, not a coupon step
-            ranking = check_ranking(conn, accession, r["ranking"])
-            if ranking != r["ranking"]:
-                print(f"  ranking {r['ranking']} contradicts the note titles, using {ranking}")
-                r["ranking"], r["quote"] = ranking, f"(from note titles; matched prospectus disagreed) {r['quote']}"
-            conn.execute("""
-                UPDATE deals SET ranking=?, is_secured=?, guarantees=?, guarantor_note=?,
-                       change_of_control=?, change_of_control_price=?, coupon_step=?,
-                       coupon_step_note=?, structure_quote=?, structure_source=?
-                WHERE accession=?""",
-                (r["ranking"], int(r["is_secured"]), r["guarantees"], r.get("guarantor_note"),
-                 int(r["change_of_control"]), r.get("change_of_control_price"),
-                 int(r["coupon_step"]), r.get("coupon_step_note"), r.get("quote"), source, accession))
-            conn.commit()
-            filled += 1
-            print(f"  [{source}] {r['ranking']}, guarantees: {r['guarantees']}, "
-                  f"change of control: {'yes' if r['change_of_control'] else 'no'}, "
-                  f"coupon step: {'yes' if r['coupon_step'] else 'no'}\n")
+            r = read(conn, accession, issuer, filing_date, url)
         except Exception as e:
-            if "credit balance" in str(e):
-                print("  STOPPED: the API says your credit balance is too low.\n")
-                break
-            missed += 1
-            print(f"  FAILED: {e}\n")
-
-    print(f"Done. {filled} filled in, {missed} missed.")
+            print(f"[{i}/{len(rows)}] {(issuer or '')[:42]}  FAILED: {e}")
+            continue
+        if check:
+            for k, old in zip(agree, stored):
+                if old is None or (k == "guarantees" and old == "not_stated"):
+                    continue
+                agree[k][1] += 1
+                agree[k][0] += r[k] == old
+                if r[k] != old:
+                    print(f"  {k:17} {(issuer or '')[:34]:34} stored {old}, rules {r[k]}")
+            continue
+        conn.execute("""
+            UPDATE deals SET ranking=?, is_secured=?, guarantees=?, guarantor_note=?,
+                   change_of_control=?, change_of_control_price=?, coupon_step=?,
+                   coupon_step_note=?, structure_quote=?, structure_source=?
+            WHERE accession=?""",
+            (r["ranking"], r["is_secured"], r["guarantees"], r["guarantor_note"], r["change_of_control"],
+             r["change_of_control_price"], r["coupon_step"], r["coupon_step_note"], r["quote"],
+             r["source"], accession))
+        conn.commit()
+        print(f"[{i}/{len(rows)}] {(issuer or '')[:42]:42} {r['ranking']}, change of control "
+              f"{'yes' if r['change_of_control'] else 'no'}, coupon step {'yes' if r['coupon_step'] else 'no'}")
+    if check:
+        for k, (a, n) in agree.items():
+            print(f"  {k:18} {a:3}/{n:<3} {100 * a / max(n, 1):5.1f}%")
 
 
 if __name__ == "__main__":

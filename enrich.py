@@ -42,6 +42,11 @@ def main():
         FROM tranches t JOIN deals d ON d.accession = t.accession
         WHERE t.spread_bps IS NOT NULL
     """).fetchall()
+    # The index is US dollar, fixed rate: a floater's spread is to SOFR and a euro bond's is to Bunds
+    conn.execute("""UPDATE tranches SET spread_vs_index_bps = NULL
+                    WHERE is_floating = 1 OR COALESCE(currency, 'USD') <> 'USD'""")
+    rows = [r for r in rows if r[0] in {k for (k,) in conn.execute(
+        "SELECT bond_key FROM tranches WHERE COALESCE(is_floating, 0) = 0 AND COALESCE(currency, 'USD') = 'USD'")}]
 
     done = skipped = 0
     for bond_key, spread, grade, moodys, sp, as_of in rows:

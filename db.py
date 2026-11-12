@@ -11,6 +11,9 @@ import sqlite3
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+# SEC asks every automated client to name itself (sec.gov/os/accessing-edgar-data)
+SEC_IDENTITY = "James McHale jtmchale912@gmail.com"
+
 DB_PATH = Path(__file__).resolve().parent / "data" / "bonds.db"
 
 SCHEMA = """
@@ -68,6 +71,7 @@ CREATE TABLE IF NOT EXISTS tranches (
     grade              TEXT,
     maturity_bucket    TEXT,
     spread_vs_index_bps REAL,
+    currency           TEXT,
     FOREIGN KEY (accession) REFERENCES deals(accession)
 );
 """
@@ -76,7 +80,7 @@ TRANCHE_FIELDS = [
     "cusip", "title", "is_floating_rate", "principal_usd", "coupon_pct", "maturity_date",
     "benchmark_treasury", "benchmark_yield_pct", "spread_bps", "yield_pct",
     "price_pct_of_par", "make_whole_bps", "par_call_date",
-    "rating_moodys", "rating_sp", "rating_fitch",
+    "rating_moodys", "rating_sp", "rating_fitch", "currency",
 ]
 
 IG_MOODYS = {"aaa", "aa1", "aa2", "aa3", "a1", "a2", "a3", "baa1", "baa2", "baa3"}
@@ -87,6 +91,9 @@ def connect():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.executescript(SCHEMA)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(tranches)")}
+    if "currency" not in cols:
+        conn.execute("ALTER TABLE tranches ADD COLUMN currency TEXT")
     return conn
 
 
@@ -114,13 +121,14 @@ def grade(t):
     return "HY" if not any(calls) else "split"
 
 
-def maturity_bucket(t):
-    """Years to maturity, bucketed the way index families are."""
+def maturity_bucket(t, asof=None):
+    """Years to maturity at pricing (or today, without a date), bucketed the way index families are."""
     md = t.get("maturity_date")
     if not md:
         return None
     try:
-        years = (date.fromisoformat(md) - date.today()).days / 365.25
+        start = date.fromisoformat(asof) if asof else date.today()
+        years = (date.fromisoformat(md) - start).days / 365.25
     except ValueError:
         return None
     for limit, name in ((3, "1-3y"), (5, "3-5y"), (7, "5-7y"), (10, "7-10y"), (15, "10-15y")):
@@ -137,32 +145,31 @@ def bond_key(t, accession):
 
 def save(terms, accession, form=None, filing_date=None, url=None):
     with connect() as conn:
-        conn.execute(
-            "INSERT OR REPLACE INTO deals VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (
-                accession,
-                terms.get("issuer"),
-                terms.get("security_type"),
-                1 if terms.get("is_final_pricing") else 0,
-                form,
-                filing_date,
-                terms.get("trade_date"),
-                terms.get("settlement_date"),
-                ", ".join(terms.get("bookrunners") or []),
-                terms.get("use_of_proceeds_category"),
-                terms.get("use_of_proceeds_quote"),
-                "fwp" if terms.get("use_of_proceeds_category") else None,
-                url,
-                datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            ),
-        )
+        row = {
+            "accession": accession,
+            "issuer": terms.get("issuer"),
+            "security_type": terms.get("security_type"),
+            "is_final": 1 if terms.get("is_final_pricing") else 0,
+            "form": form,
+            "filing_date": filing_date,
+            "trade_date": terms.get("trade_date"),
+            "settlement_date": terms.get("settlement_date"),
+            "bookrunners": ", ".join(terms.get("bookrunners") or []),
+            "use_of_proceeds": terms.get("use_of_proceeds_category"),
+            "proceeds_quote": terms.get("use_of_proceeds_quote") if terms.get("use_of_proceeds_category") else None,
+            "proceeds_source": "fwp" if terms.get("use_of_proceeds_category") else None,
+            "url": url,
+            "extracted_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+        conn.execute(f"INSERT OR REPLACE INTO deals ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})",
+                     list(row.values()))
         for t in terms.get("tranches", []):
-            values = ([bond_key(t, accession), accession] + [t.get(f) for f in TRANCHE_FIELDS]
-                      + [math_check(t), grade(t), maturity_bucket(t), None])
-            conn.execute(
-                f"INSERT OR REPLACE INTO tranches VALUES ({','.join('?' * len(values))})",
-                values,
-            )
+            row = {"bond_key": bond_key(t, accession), "accession": accession,
+                   **{("is_floating" if f == "is_floating_rate" else f): t.get(f) for f in TRANCHE_FIELDS},
+                   "math_check": math_check(t), "grade": grade(t),
+                   "maturity_bucket": maturity_bucket(t, terms.get("trade_date") or filing_date)}
+            conn.execute(f"INSERT OR REPLACE INTO tranches ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})",
+                         list(row.values()))
     return len(terms.get("tranches", []))
 
 

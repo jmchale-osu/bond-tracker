@@ -16,13 +16,13 @@ from pathlib import Path
 
 import db
 import thesis
-from extras import ASK_HTML, ASK_JS, CSS as EXTRAS_CSS, recap_html
+from extras import CSS as EXTRAS_CSS
 
 HERE = Path(__file__).resolve().parent
 SITE = HERE / "site"
 BUCKETS = ["1-3y", "3-5y", "5-7y", "7-10y", "10-15y", "15y+"]
-PAGES = [("index.html", "Thesis"), ("evidence.html", "Evidence"), ("market.html", "Market"),
-         ("deals.html", "Deals"), ("method.html", "Method")]
+PAGES = [("index.html", "Thesis"), ("evidence.html", "Evidence"), ("model.html", "Model"),
+         ("market.html", "Market"), ("deals.html", "Deals"), ("method.html", "Method")]
 
 
 def collect(conn):
@@ -33,15 +33,18 @@ def collect(conn):
                t.math_check, d.use_of_proceeds, d.proceeds_quote,
                COALESCE(d.trade_date, d.filing_date), d.url, d.bookrunners,
                d.ranking, d.guarantees, d.guarantor_note, d.change_of_control,
-               d.change_of_control_price, d.coupon_step, d.coupon_step_note, d.sector, d.country
+               d.change_of_control_price, d.coupon_step, d.coupon_step_note, d.sector, d.country,
+               m.fair_bps, m.residual_bps, t.currency, t.is_floating
         FROM tranches t JOIN deals d ON d.accession = t.accession
+        LEFT JOIN model_bonds m ON m.bond_key = t.bond_key
         WHERE COALESCE(d.trade_date, d.filing_date) IS NOT NULL
         ORDER BY COALESCE(d.trade_date, d.filing_date) DESC
     """).fetchall()
     keys = ["key", "issuer", "title", "cusip", "size", "coupon", "maturity", "spread", "gap",
             "yield", "price", "grade", "bucket", "moodys", "sp", "check", "proceeds",
             "quote", "priced", "url", "banks",
-            "rank", "guar", "guarnote", "coc", "cocpx", "step", "stepnote", "sector", "country"]
+            "rank", "guar", "guarnote", "coc", "cocpx", "step", "stepnote", "sector", "country",
+            "fair", "resid", "ccy", "frn"]
     return [dict(zip(keys, r)) for r in rows]
 
 
@@ -171,6 +174,9 @@ text-decoration:none;color:inherit;transition:border-color .15s,transform .15s}
 .card .num{font-family:Georgia,serif;font-size:34px;font-variant-numeric:tabular-nums;line-height:1.1}
 .card .num small{font:13px ui-sans-serif,sans-serif;color:var(--ink3);margin-left:4px}
 .card .meta{font-size:13px;color:var(--ink2);margin:4px 0 10px}
+.stats.four{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:22px 34px}
+@media (max-width:700px){.stats.four{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 16px}}
+.card .mline{margin-top:4px;color:var(--ink2)}
 .card .why{font-size:13px;color:var(--ink3);margin:10px 0 0;line-height:1.5}
 .spark{display:block;width:100%;height:44px}
 .spark{margin-top:6px}.spark .ln{fill:none;stroke:var(--accent);stroke-width:2;vector-effect:non-scaling-stroke}
@@ -369,6 +375,7 @@ function card(c,href){
     <span class="exp">${expected(c)}</span></div><h3>${esc(c.claim)}</h3>
     <div class="num">${c.est==null?'n/a':pm(c.est)}<small>bps vs peers</small></div>
     <div class="meta">${c.lo!=null?`range ${pm(c.lo)} to ${pm(c.hi)} · `:''}${c.n} bonds, ${c.issuers} issuer${c.issuers===1?'':'s'}</div>
+    ${c.model?`<div class="meta mline">Fair value model: <b>${pm(Math.round(c.model.est))}</b> bps, range ${pm(Math.round(c.model.lo))} to ${pm(Math.round(c.model.hi))}</div>`:''}
     ${spark(c.trend)}<p class="why">${esc(c.why)}</p></a>`;
 }
 function initThesis(){
@@ -509,10 +516,44 @@ function initMarket(){
   wireFilters(); render();
 }
 
+/* ---------- Model page ---------- */
+function drawModel(){
+  const pts=MODEL.weeks; if(pts.length<2) return '<p class="note">Not enough weeks scored yet.</p>';
+  const W=1000,H=250,L=50,R=96,B=40,T=14,pw=W-L-R,ph=H-B-T;
+  const roll=k=>pts.map((p,i)=>{const w=pts.slice(Math.max(0,i-3),i+1); const n=w.reduce((a,q)=>a+q.bonds,0);
+    return w.reduce((a,q)=>a+q[k]*q.bonds,0)/n;});
+  const m=roll('mae_model'), b=roll('mae_baseline');
+  const tk=ticks(0,Math.max(...m,...b)+4,4), ymax=tk[tk.length-1];
+  const x=i=>L+i/(pts.length-1)*pw, y=v=>T+ph-v/ymax*ph;
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Out of sample pricing error, model versus baseline">`;
+  tk.forEach(v=>{s+=`<line class="grid" x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}"/><text class="tick" x="${L-8}" y="${y(v)+4}" text-anchor="end">${v}</text>`;});
+  [[b,'m2','Baseline'],[m,'m1','Model']].forEach(([v,c,n])=>{
+    s+=`<polyline class="line ${c}" points="${v.map((q,i)=>x(i)+','+y(q)).join(' ')}"/>`;
+    s+=`<text class="axl" x="${W-R+8}" y="${y(v[v.length-1])+4}">${n} ${v[v.length-1].toFixed(0)}</text>`;});
+  pts.forEach((p,i)=>{if(i%Math.max(1,Math.ceil(pts.length/7))===0)
+    s+=`<text class="tick" x="${x(i)}" y="${H-10}" text-anchor="middle">${p.week.slice(2,7)}</text>`;
+    s+=`<rect class="hit" x="${x(i)-pw/pts.length/2}" y="${T}" width="${pw/pts.length}" height="${ph}"
+      data-tip="<b>Week of ${p.week}</b><br>${p.bonds} bonds scored<br>Model error ${p.mae_model} bps<br>Baseline error ${p.mae_baseline} bps"/>`;});
+  return s+'</svg>';
+}
+function movers(rows,sign){
+  const recent=rows.filter(b=>b.resid!=null).sort((a,b)=>b.priced.localeCompare(a.priced));
+  const cut=recent.length?recent[Math.min(recent.length-1,149)].priced:'';
+  const seen=new Set(), pick=recent.filter(b=>b.priced>=cut).sort((a,b)=>sign*(b.resid-a.resid))
+    .filter(b=>!seen.has(b.issuer)&&seen.add(b.issuer)).slice(0,8);   // one bond per issuer
+  return '<table><thead><tr><th>Issuer</th><th class="hide-s">Tranche</th><th class="n">Spread</th><th class="n">Model</th><th class="n">Gap</th><th class="n">Priced</th></tr></thead><tbody>'+
+    pick.map(b=>`<tr><td>${esc(b.issuer)}</td><td class="hide-s">${esc(b.title)}</td><td class="n">${pm(b.spread)}</td>
+      <td class="n">${pm(Math.round(b.fair))}</td><td class="n"><b>${pm(Math.round(b.resid))}</b></td><td class="n">${b.priced}</td></tr>`).join('')+'</tbody></table>';
+}
+function initModel(){
+  $('#modelchart').innerHTML=drawModel();
+  $('#cheap').innerHTML=movers(BONDS,1); $('#rich').innerHTML=movers(BONDS,-1);
+}
+
 /* ---------- Deals page ---------- */
 function drawTable(rows){
   const cols=[['issuer','Issuer',''],['title','Tranche','hide-s'],['size','Size','n'],['coupon','Coupon','n hide-s'],
-    ['spread','Spread','n'],['gap','vs index','n'],['grade','Grade','hide-s'],['rank','Ranking','hide-s'],
+    ['spread','Spread','n'],['gap','vs index','n'],['resid','vs model','n hide-s'],['grade','Grade','hide-s'],['rank','Ranking','hide-s'],
     ['coc','CoC put','hide-s'],['proceeds','Proceeds','hide-s'],['priced','Priced','n']];
   const sorted=[...rows].sort((a,b)=>{const x=a[sortKey],y=b[sortKey];
     if(x==null)return 1; if(y==null)return -1;
@@ -523,7 +564,7 @@ function drawTable(rows){
     s+=`<tr class="row" data-key="${esc(b.key)}">
       <td>${esc(b.issuer)}</td><td class="hide-s">${esc(b.title)}</td><td class="n">${money(b.size)}</td>
       <td class="n hide-s">${b.coupon!=null?b.coupon+'%':/floating/i.test(b.title||'')?'<span title="Floating rate: coupon resets off SOFR">FRN</span>':''}</td><td class="n">${pm(b.spread)}</td>
-      <td class="n">${pm(b.gap)}</td><td class="hide-s">${b.grade||'<span title="The term sheet did not state ratings">n/s</span>'}</td>
+      <td class="n">${pm(b.gap)}</td><td class="n hide-s">${pm(b.resid)}</td><td class="hide-s">${b.grade||'<span title="The term sheet did not state ratings">n/s</span>'}</td>
       <td class="hide-s">${RSHORT[b.rank]||''}</td><td class="hide-s">${b.coc?'Yes':''}</td>
       <td class="hide-s">${plabel(b.proceeds)}</td><td class="n">${b.priced||''}</td></tr>`;});
   return s+'</tbody></table>'+(sorted.length>200?'<p class="note">Showing the first 200 of '+sorted.length+'.</p>':'');
@@ -557,7 +598,7 @@ function initDeals(){
   wireFilters(); render();
 }
 
-({thesis:initThesis, evidence:initEvidence, market:initMarket, deals:initDeals}[document.body.dataset.page]||(()=>{}))();
+({thesis:initThesis, evidence:initEvidence, model:initModel, market:initMarket, deals:initDeals}[document.body.dataset.page]||(()=>{}))();
 wireTips();
 """
 
@@ -575,7 +616,7 @@ def shell(file, page, title, description, body, after=""):
 <body data-page="{page}"><div id="tip"></div>
 <div class="site"><div class="in"><a class="brand" href="index.html">New Issue Credit Tracker</a><nav>{nav}</nav></div></div>
 {body}
-<div class="col"><footer>Built by James McHale from SEC EDGAR filings (424B2, 424B5, FWP) and FRED
+<div class="col"><footer>Built by James McHale from SEC EDGAR filings (FWP, 424B2, 424B5) and FRED
 (ICE BofA index OAS, Treasury yields, inflation, jobs). Personal project. Not investment advice.</footer></div>
 <script src="data.js"></script><script src="app.js"></script>{after}</body></html>"""
 
@@ -592,7 +633,6 @@ def fsel(k, first, options):
 
 TENOR = ('<select class="bucketsel"><option value="all">Any tenor</option>'
          + "".join(f'<option value="{b}">{b}</option>' for b in BUCKETS) + "</select>")
-GRADES = fbtn("grade", "all", "All", True) + fbtn("grade", "IG", "IG") + fbtn("grade", "HY", "HY")
 
 # What each claim is testing, in market terms. Shown on the Evidence page.
 EXPLAIN = {
@@ -718,7 +758,7 @@ def evidence_page(card, bonds):
     <h2>All terms, unmatched</h2>
     <p>The raw medians for every structural term. These mix ratings and maturities, which is why the claims
     above compare matched peers instead. Filter to a grade and tenor to compare like with like.</p>
-    <div class="controls">{GRADES}<span class="gap"></span>{TENOR}{structure_filters}</div>
+    <div class="controls">{TENOR}{structure_filters}</div>
     <div class="panel" style="padding:8px 12px;overflow-x:auto" id="structure"></div>
   </section>
 </main>"""
@@ -737,10 +777,7 @@ def macro_tiles(m):
     if m["fed"]:
         nxt = date.fromisoformat(m["next_fomc"]).strftime("%b %-d") if m["next_fomc"] else "not yet set"
         tiles.append(tile(f"{m['fed'][0]:.2f}–{m['fed'][1]:.2f}%", "fed funds target", f"next decision {nxt}"))
-    tiles += [pct(m["cpi"], "CPI inflation"), pct(m["core_pce"], "core PCE inflation"), pct(m["unemployment"], "unemployment")]
-    if m["payrolls"]:
-        r = m["payrolls"]
-        tiles.append(tile(f"{r['value']:+,.0f}k", "payrolls", f"{r['month']}, was {r['prev']:+,.0f}k in {r['prev_month'][:3]}"))
+    tiles += [pct(m["cpi"], "CPI inflation"), pct(m["unemployment"], "unemployment")]
     if m["ten"]:
         tiles.append(tile(f"{m['ten']['value']:.2f}%", "10-year Treasury", m["ten"]["date"]))
     return "".join(tiles)
@@ -763,7 +800,7 @@ def market_page(bonds, checks, span, macro):
   </div>
 </header>
 <main class="wide">
-  <div class="controls">{GRADES}<span class="gap"></span>{fbtn('proceeds', 'all', 'Any use', True)}
+  <div class="controls">{fbtn('proceeds', 'all', 'Any use', True)}
     {fbtn('proceeds', 'acquisition', 'Acquisition')}{fbtn('proceeds', 'refinancing', 'Refinancing')}
     {fbtn('proceeds', 'other', 'Other')}{TENOR}<span id="weekchip"></span></div>
 
@@ -801,6 +838,88 @@ def market_page(bonds, checks, span, macro):
                  "Weekly registered corporate bond issuance and new issue spreads versus the ICE BofA indices.", body)
 
 
+def model_summary(conn):
+    try:
+        weeks = [dict(zip(["week", "bonds", "train", "mae_model", "mae_baseline"], r))
+                 for r in conn.execute("SELECT * FROM model_weeks ORDER BY week")]
+        terms = {r[0]: dict(zip(["term", "estimate", "lo", "hi", "bonds", "issuers"], r))
+                 for r in conn.execute("SELECT * FROM model_terms")}
+    except Exception:
+        weeks, terms = [], {}
+    n = sum(w["bonds"] for w in weeks)
+    mae = lambda k: sum(w[k] * w["bonds"] for w in weeks) / n if n else None
+    return {"weeks": weeks, "terms": terms, "scored": n, "mae_model": mae("mae_model"), "mae_baseline": mae("mae_baseline")}
+
+
+TERM_LABELS = [
+    ("index_oas", "Index spread that day", "per 1 bp of index"),
+    ("rating_at_bbb", "Rating one notch lower", "around BBB"),
+    ("maturity_at_10y", "Twice the maturity", "around 10 years"),
+    ("log_size", "Deal size", "per doubling of size", 0.693),
+    ("foreign", "Issuer based outside the US", ""),
+    ("issuer_history", "Issuer's past deals", "per 1 bp they came wide"),
+    ("sub", "Subordinated", ""), ("secured", "Secured or first mortgage", ""),
+    ("coc", "Change of control put", ""), ("step", "Coupon step", ""), ("acq", "Acquisition funding", ""),
+]
+
+
+def model_page(m):
+    if not m["scored"]:
+        tiles, rows = '<p class="note">The model has not scored any bonds yet.</p>', ""
+    else:
+        better = (1 - m["mae_model"] / m["mae_baseline"]) * 100
+        tiles = f"""<div class="stats four">
+    <div class="stat"><div class="v">{m['mae_model']:.1f}</div><div class="k">bps average miss, model</div></div>
+    <div class="stat"><div class="v">{m['mae_baseline']:.1f}</div><div class="k">bps average miss, baseline</div></div>
+    <div class="stat"><div class="v">{better:+.0f}%</div><div class="k">{"smaller" if better > 0 else "larger"} miss than baseline</div></div>
+    <div class="stat"><div class="v">{m['scored']:,}</div><div class="k">bonds scored out of sample</div></div></div>"""
+        rows = ""
+        for key, label, unit, *scale in TERM_LABELS:
+            t = m["terms"].get(key)
+            if not t:
+                continue
+            k = scale[0] if scale else 1
+            est, lo, hi = t["estimate"] * k, t["lo"] * k, t["hi"] * k
+            fmt = (lambda v: f"{v:+.2f}") if key in ("index_oas", "issuer_history") else (lambda v: f"{v:+.0f}")
+            n = f"{t['bonds']:,} bonds, {t['issuers']} issuers" if key in ("foreign", "sub", "secured", "coc", "step", "acq") else ""
+            rows += (f"<tr><td>{label}</td><td class='n'><b>{fmt(est)}</b></td><td class='n'>{fmt(lo)} to {fmt(hi)}</td>"
+                     f"<td class='hide-s'>{unit}</td><td class='hide-s'>{n}</td></tr>")
+    return shell("model.html", "model", "Model · New Issue Credit Tracker",
+                 "A fair value model for new corporate bonds, scored out of sample every week.", f"""
+<header class="page col">
+  <p class="kicker">Model</p>
+  <h1>What should this bond have priced at?</h1>
+  <p class="dek">A regression of new issue spread on the bond's rating, maturity, size, structure, its issuer's
+  past deals and the index that day. Every bond is scored out of sample: the model only sees deals priced in
+  earlier weeks, then gives its fair spread before looking at the answer.</p>
+  {tiles}
+</header>
+<main class="col">
+  <h2>Does it beat a simple rule?</h2>
+  <p>The baseline is what you could do with no model: the index spread for the bond's rating that day, plus the
+  median gap to the index for bonds of a similar maturity. Both are scored the same way, week by week.</p>
+  <figure><div id="modelchart"></div><figcaption>Average absolute miss in bps, four-week rolling, out of sample.
+  Hover a week for its numbers.</figcaption></figure>
+
+  <h2>Came wide of the model</h2>
+  <p>Of the most recent 150 bonds scored, the ones that priced furthest over their fair spread, one per issuer:
+  cheap for the buyer, expensive for the issuer.</p>
+  <div class="tablewrap" id="cheap"></div>
+  <h2>Came inside the model</h2>
+  <p>The same bonds, the ones that priced furthest through fair value.</p>
+  <div class="tablewrap" id="rich"></div>
+
+  <h2>What moves a new issue spread</h2>
+  <p>The model fit on every bond. Each number is the extra spread, in bps, holding the other terms constant.
+  The range is the 5th to 95th percentile when the model is refit on resampled issuers, the same test the
+  thesis scorecard uses. The five structure terms are the thesis, asked a second way.</p>
+  <div class="tablewrap"><table><thead><tr><th>Term</th><th class="n">Effect</th><th class="n">Range</th>
+  <th class="hide-s">Unit</th><th class="hide-s">Sample</th></tr></thead><tbody>{rows}</tbody></table></div>
+  <p class="note">US dollar fixed rate bonds with a stated rating only. Floaters (spread to SOFR), euro bonds
+  (spread to Bunds) and spreads computed from a prospectus are left out.</p>
+</main>""")
+
+
 def deals_page(bonds):
     sectors = sorted({b["sector"] or "Unknown" for b in bonds})
     body = f"""
@@ -811,9 +930,8 @@ def deals_page(bonds):
   the issuer's own words and a link to the source filing on EDGAR.</p>
 </header>
 <main class="wide">
-{ASK_HTML}
   <h2>The deals</h2>
-  <div class="controls sticky">{GRADES}<span class="gap"></span>{fbtn('proceeds', 'all', 'Any use', True)}
+  <div class="controls sticky">{fbtn('proceeds', 'all', 'Any use', True)}
     {fbtn('proceeds', 'acquisition', 'Acquisition')}{fbtn('proceeds', 'refinancing', 'Refinancing')}
     {fbtn('proceeds', 'other', 'Other')}{TENOR}
     {fsel('rank', 'Any ranking', [('senior', 'Senior unsecured'), ('secured', 'Secured / first mortgage'), ('sub', 'Subordinated')])}
@@ -823,7 +941,7 @@ def deals_page(bonds):
   <div class="tablewrap"><div id="table"></div></div>
 </main>"""
     return shell("deals.html", "deals", "Deals · New Issue Credit Tracker",
-                 "Every registered corporate bond tranche in the tracker, with terms and source filings.", body, ASK_JS)
+                 "Every registered corporate bond tranche in the tracker, with terms and source filings.", body)
 
 
 def method_page(bonds, checks, ranked):
@@ -834,7 +952,6 @@ def method_page(bonds, checks, ranked):
   <p class="dek">Where the numbers come from, how the thesis is tested, and what the data cannot tell you.</p>
 </header>
 <main class="col">
-{recap_html()}
   <h2>How each claim is tested</h2>
   <ul>
     <li><b>Spread vs index.</b> Each bond's spread to Treasuries minus the ICE BofA option-adjusted index spread for
@@ -870,18 +987,31 @@ def method_page(bonds, checks, ranked):
   </ul>
 
   <h2>How it is built</h2>
+  <p>Every source is free and every step is a rule you can read, so the weekly update runs with no API key and
+  gives the same answer each time it runs.</p>
   <table class="steps">
-    <tr><td>Find</td><td><code>backfill.py</code> scans EDGAR free writing prospectuses for bond pricing term sheets.</td></tr>
-    <tr><td>Extract</td><td><code>extract.py</code> has Claude pull each tranche's terms, using only numbers printed in the filing.</td></tr>
-    <tr><td>Structure</td><td><code>structure.py</code> finds each deal's prospectus supplement and reads ranking, guarantees,
-    change of control and coupon steps, checked against the notes' own titles.</td></tr>
-    <tr><td>Proceeds</td><td><code>proceeds.py</code> classifies use of proceeds with a verbatim quote.</td></tr>
-    <tr><td>Check</td><td>Every tranche must satisfy benchmark yield + spread = yield. <code>dedupe.py</code> merges a deal filed twice.</td></tr>
-    <tr><td>Enrich</td><td><code>fred.py</code> and <code>enrich.py</code> pull index spreads and Treasury yields from FRED.</td></tr>
+    <tr><td>Find</td><td><code>backfill.py</code> searches EDGAR full text for free writing prospectuses that carry a
+    bond's pricing terms ("Spread to Benchmark Treasury" and its variants), going back to November 2024.</td></tr>
+    <tr><td>Read</td><td><code>parse_fwp.py</code> reads each term sheet's tables: size, coupon, maturity, CUSIP,
+    spread, yield, price, benchmark, make-whole and par call, ratings. Checked against an earlier hand-verified
+    extraction of 215 bonds, it finds 213 and matches coupon and maturity on all of them, yield and price on 99%.</td></tr>
+    <tr><td>Prospectus only</td><td>Amazon, Oracle and Microsoft file no term sheet. <code>prospectus_deals.py</code>
+    takes each tranche's price from the final prospectus's filing fee table and computes yield and spread over the
+    Treasury curve. These are marked as computed and kept out of the index comparison.</td></tr>
+    <tr><td>Structure</td><td><code>structure.py</code> and <code>rules.py</code> read ranking, guarantees, change of
+    control and coupon steps from the term sheet and the prospectus supplement, checked against the notes' titles.</td></tr>
+    <tr><td>Proceeds</td><td><code>proceeds.py</code> classifies use of proceeds by the deal it names: a named
+    acquisition, named debt to repay, or general corporate purposes.</td></tr>
+    <tr><td>Check</td><td>Every tranche must satisfy benchmark yield + spread = yield. <code>dedupe.py</code> merges a
+    bond filed twice, matched on CUSIP or on issuer, coupon and maturity.</td></tr>
+    <tr><td>Enrich</td><td><code>fred.py</code> and <code>enrich.py</code> pull index spreads and the Treasury curve
+    from FRED. Only US dollar fixed rate bonds are compared with the index: a floater's spread is to SOFR and a euro
+    bond's is to Bunds.</td></tr>
     <tr><td>Macro</td><td><code>macro.py</code> pulls inflation, jobs and the fed funds target from FRED, Fed decision days from
     federalreserve.gov and CPI and jobs report dates from ALFRED.</td></tr>
     <tr><td>Test</td><td><code>thesis.py</code> runs the matched comparisons and resampling behind the scorecard.</td></tr>
-    <tr><td>Write</td><td><code>agent.py</code> drafts the weekly note, limited to numbers its database queries return.</td></tr>
+    <tr><td>Model</td><td><code>model.py</code> fits the fair value regression each week on earlier deals only and scores
+    the new ones.</td></tr>
     <tr><td>Publish</td><td><code>report.py</code> builds this site.</td></tr>
   </table>
 </main>"""
@@ -893,6 +1023,11 @@ def build():
     conn = db.connect()
     bonds = collect(conn)
     card = thesis.scorecard(conn)
+    model = model_summary(conn)
+    for c in card["claims"]:
+        t = model["terms"].get(c["key"])
+        if t:
+            c["model"] = {"est": t["estimate"], "lo": t["lo"], "hi": t["hi"]}
     checks = {}
     for b in bonds:
         checks[b["check"]] = checks.get(b["check"], 0) + 1
@@ -910,10 +1045,11 @@ def build():
     (SITE / "data.js").write_text(
         f"const BONDS={json.dumps(bonds)};\nconst BUCKETS={json.dumps(BUCKETS)};\n"
         f"const THESIS={json.dumps(card)};\nconst MARKET={json.dumps(index_spreads(conn, start))};\n"
-        f"const MACRO={json.dumps(macro)};\n")
+        f"const MACRO={json.dumps(macro)};\nconst MODEL={json.dumps({'weeks': model['weeks']})};\n")
     pages = {
         "index.html": thesis_page(card, bonds),
         "evidence.html": evidence_page(card, bonds),
+        "model.html": model_page(model),
         "market.html": market_page(bonds, checks, span, macro),
         "deals.html": deals_page(bonds),
         "method.html": method_page(bonds, checks, ranked),

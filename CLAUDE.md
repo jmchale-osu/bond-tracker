@@ -15,9 +15,13 @@ New-issue investment-grade bond tracker. A resume project for James (recruiting 
 - The workflow runs Mondays 13:00 UTC, on demand (`gh workflow run "Weekly update" -R jmchale-osu/bond-tracker`), and republishes on any push that touches `site/`.
 
 ## Pipeline (`python weekly.py`, or `--dry-run`)
-backfill.py → proceeds.py → structure.py → issuer_info.py → fred.py → macro.py → dedupe.py → enrich.py → agent.py recap → report.py
-- Data: `data/bonds.db` (SQLite, committed). Term sheets come from EDGAR FWP/424B filings, extracted by Claude. Index spreads are ICE BofA OAS from FRED.
-- `ANTHROPIC_API_KEY` lives in `.env` locally and as a repo secret. `weekly.py` checks the key first and stops on a 401.
+backfill.py → fred.py → macro.py → prospectus_deals.py → proceeds.py → structure.py → issuer_info.py → dedupe.py → enrich.py → model.py → report.py
+- No paid APIs. Term sheets are found with EDGAR full-text search and read by `parse_fwp.py` (rules, no LLM). `python parse_fwp.py --check` scores it against the 215 LLM-extracted bonds; rerun it after changing the parser.
+- Use of proceeds and structure come from `rules.py`. Amazon, Oracle and Microsoft file no FWP: `prospectus_deals.py` computes their spreads from the filing fee table (math_check = 'computed', kept out of the index comparison).
+- SEC requests use `db.SEC_IDENTITY` as the User-Agent (SEC requires a contact). Keep requests under 10 a second.
+- Data: `data/bonds.db` (SQLite, committed). Raw HTML cache in `data/html/` (not committed). Index spreads and the Treasury curve are from FRED.
+- Only US dollar fixed rate bonds get a spread vs index (floaters are a spread to SOFR; euro bonds to Bunds).
+- `model.py`: ridge regression refit each week on earlier deals; tables model_bonds, model_weeks, model_terms.
 
 ## Thesis ("structure is priced")
 - `thesis.py` scores five claims: subordination, collateral, change of control put, coupon step and acquisition funding.

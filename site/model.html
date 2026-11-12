@@ -1,0 +1,49 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Model · New Issue Credit Tracker</title>
+<meta name="description" content="A fair value model for new corporate bonds, scored out of sample every week.">
+<meta property="og:title" content="Model · New Issue Credit Tracker"><meta property="og:description" content="A fair value model for new corporate bonds, scored out of sample every week.">
+<meta property="og:type" content="website"><meta name="twitter:card" content="summary">
+<link rel="stylesheet" href="style.css"></head>
+<body data-page="model"><div id="tip"></div>
+<div class="site"><div class="in"><a class="brand" href="index.html">New Issue Credit Tracker</a><nav><a href="index.html">Thesis</a><a href="evidence.html">Evidence</a><a href="model.html" aria-current=page>Model</a><a href="market.html">Market</a><a href="deals.html">Deals</a><a href="method.html">Method</a></nav></div></div>
+
+<header class="page col">
+  <p class="kicker">Model</p>
+  <h1>What should this bond have priced at?</h1>
+  <p class="dek">A regression of new issue spread on the bond's rating, maturity, size, structure, its issuer's
+  past deals and the index that day. Every bond is scored out of sample: the model only sees deals priced in
+  earlier weeks, then gives its fair spread before looking at the answer.</p>
+  <div class="stats four">
+    <div class="stat"><div class="v">18.2</div><div class="k">bps average miss, model</div></div>
+    <div class="stat"><div class="v">21.7</div><div class="k">bps average miss, baseline</div></div>
+    <div class="stat"><div class="v">+16%</div><div class="k">smaller miss than baseline</div></div>
+    <div class="stat"><div class="v">1,800</div><div class="k">bonds scored out of sample</div></div></div>
+</header>
+<main class="col">
+  <h2>Does it beat a simple rule?</h2>
+  <p>The baseline is what you could do with no model: the index spread for the bond's rating that day, plus the
+  median gap to the index for bonds of a similar maturity. Both are scored the same way, week by week.</p>
+  <figure><div id="modelchart"></div><figcaption>Average absolute miss in bps, four-week rolling, out of sample.
+  Hover a week for its numbers.</figcaption></figure>
+
+  <h2>Came wide of the model</h2>
+  <p>Of the most recent 150 bonds scored, the ones that priced furthest over their fair spread, one per issuer:
+  cheap for the buyer, expensive for the issuer.</p>
+  <div class="tablewrap" id="cheap"></div>
+  <h2>Came inside the model</h2>
+  <p>The same bonds, the ones that priced furthest through fair value.</p>
+  <div class="tablewrap" id="rich"></div>
+
+  <h2>What moves a new issue spread</h2>
+  <p>The model fit on every bond. Each number is the extra spread, in bps, holding the other terms constant.
+  The range is the 5th to 95th percentile when the model is refit on resampled issuers, the same test the
+  thesis scorecard uses. The five structure terms are the thesis, asked a second way.</p>
+  <div class="tablewrap"><table><thead><tr><th>Term</th><th class="n">Effect</th><th class="n">Range</th>
+  <th class="hide-s">Unit</th><th class="hide-s">Sample</th></tr></thead><tbody><tr><td>Index spread that day</td><td class='n'><b>+0.60</b></td><td class='n'>+0.46 to +0.75</td><td class='hide-s'>per 1 bp of index</td><td class='hide-s'></td></tr><tr><td>Rating one notch lower</td><td class='n'><b>+11</b></td><td class='n'>+9 to +14</td><td class='hide-s'>around BBB</td><td class='hide-s'></td></tr><tr><td>Twice the maturity</td><td class='n'><b>+15</b></td><td class='n'>+14 to +16</td><td class='hide-s'>around 10 years</td><td class='hide-s'></td></tr><tr><td>Deal size</td><td class='n'><b>-1</b></td><td class='n'>-3 to +1</td><td class='hide-s'>per doubling of size</td><td class='hide-s'></td></tr><tr><td>Issuer based outside the US</td><td class='n'><b>-12</b></td><td class='n'>-17 to -6</td><td class='hide-s'></td><td class='hide-s'>85 bonds, 28 issuers</td></tr><tr><td>Issuer's past deals</td><td class='n'><b>+0.78</b></td><td class='n'>+0.66 to +0.89</td><td class='hide-s'>per 1 bp they came wide</td><td class='hide-s'></td></tr><tr><td>Subordinated</td><td class='n'><b>+20</b></td><td class='n'>+11 to +33</td><td class='hide-s'></td><td class='hide-s'>38 bonds, 20 issuers</td></tr><tr><td>Secured or first mortgage</td><td class='n'><b>+17</b></td><td class='n'>+11 to +24</td><td class='hide-s'></td><td class='hide-s'>102 bonds, 36 issuers</td></tr><tr><td>Change of control put</td><td class='n'><b>-2</b></td><td class='n'>-7 to +3</td><td class='hide-s'></td><td class='hide-s'>631 bonds, 223 issuers</td></tr><tr><td>Coupon step</td><td class='n'><b>+28</b></td><td class='n'>+3 to +64</td><td class='hide-s'></td><td class='hide-s'>26 bonds, 13 issuers</td></tr><tr><td>Acquisition funding</td><td class='n'><b>-14</b></td><td class='n'>-20 to -9</td><td class='hide-s'></td><td class='hide-s'>169 bonds, 46 issuers</td></tr></tbody></table></div>
+  <p class="note">US dollar fixed rate bonds with a stated rating only. Floaters (spread to SOFR), euro bonds
+  (spread to Bunds) and spreads computed from a prospectus are left out.</p>
+</main>
+<div class="col"><footer>Built by James McHale from SEC EDGAR filings (FWP, 424B2, 424B5) and FRED
+(ICE BofA index OAS, Treasury yields, inflation, jobs). Personal project. Not investment advice.</footer></div>
+<script src="data.js"></script><script src="app.js"></script></body></html>

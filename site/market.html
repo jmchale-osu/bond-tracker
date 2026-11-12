@@ -6,23 +6,23 @@
 <meta property="og:type" content="website"><meta name="twitter:card" content="summary">
 <link rel="stylesheet" href="style.css"></head>
 <body data-page="market"><div id="tip"></div>
-<div class="site"><div class="in"><a class="brand" href="index.html">New Issue Credit Tracker</a><nav><a href="index.html">Thesis</a><a href="evidence.html">Evidence</a><a href="market.html" aria-current=page>Market</a><a href="deals.html">Deals</a><a href="method.html">Method</a></nav></div></div>
+<div class="site"><div class="in"><a class="brand" href="index.html">New Issue Credit Tracker</a><nav><a href="index.html">Thesis</a><a href="evidence.html">Evidence</a><a href="model.html">Model</a><a href="market.html" aria-current=page>Market</a><a href="deals.html">Deals</a><a href="method.html">Method</a></nav></div></div>
 
 <header class="page col">
   <p class="kicker">Market</p>
   <h1>What the primary market priced</h1>
   <p class="dek">Registered corporate bond supply week by week, where index spreads and the economy stand,
   and which new deals came cheap or rich.</p>
-  <p class="byline">2026-07-09 to 2026-10-06</p>
+  <p class="byline">2024-10-31 to 2026-11-10</p>
   <div class="stats">
     <div class="stat"><div class="v" id="count">0</div><div class="k">tranches in view</div></div>
     <div class="stat"><div class="v" id="vol">0</div><div class="k">issuance in view</div></div>
     <div class="stat"><div class="v" id="medgap">0</div><div class="k">median vs index</div></div>
-    <div class="stat"><div class="v">187/196</div><div class="k">pricing math verified</div></div>
+    <div class="stat"><div class="v">2250/2306</div><div class="k">pricing math verified</div></div>
   </div>
 </header>
 <main class="wide">
-  <div class="controls"><button class='f' data-k='grade' data-v='all' aria-pressed='true'>All</button><button class='f' data-k='grade' data-v='IG' aria-pressed='false'>IG</button><button class='f' data-k='grade' data-v='HY' aria-pressed='false'>HY</button><span class="gap"></span><button class='f' data-k='proceeds' data-v='all' aria-pressed='true'>Any use</button>
+  <div class="controls"><button class='f' data-k='proceeds' data-v='all' aria-pressed='true'>Any use</button>
     <button class='f' data-k='proceeds' data-v='acquisition' aria-pressed='false'>Acquisition</button><button class='f' data-k='proceeds' data-v='refinancing' aria-pressed='false'>Refinancing</button>
     <button class='f' data-k='proceeds' data-v='other' aria-pressed='false'>Other</button><select class="bucketsel"><option value="all">Any tenor</option><option value="1-3y">1-3y</option><option value="3-5y">3-5y</option><option value="5-7y">5-7y</option><option value="7-10y">7-10y</option><option value="10-15y">10-15y</option><option value="15y+">15y+</option></select><span id="weekchip"></span></div>
 
@@ -39,7 +39,7 @@
   <h2 id="backdrop">The macro backdrop</h2>
   <p>Credit spreads sit on top of Treasury yields, and Treasury yields follow the Fed. The Fed in turn watches
   two things: inflation and jobs. These are the latest readings.</p>
-  <div class="stats macro"><div class="stat"><div class="v">3.75–4.00%</div><div class="k">fed funds target</div><div class="d">next decision Dec 9</div></div><div class="stat"><div class="v">3.7%</div><div class="k">CPI inflation</div><div class="d">Sep 2026, was 3.4% in Aug</div></div><div class="stat"><div class="v">3.1%</div><div class="k">core PCE inflation</div><div class="d">Sep 2026, was 3.0% in Aug</div></div><div class="stat"><div class="v">4.2%</div><div class="k">unemployment</div><div class="d">Sep 2026, was 4.1% in Aug</div></div><div class="stat"><div class="v">+29k</div><div class="k">payrolls</div><div class="d">Sep 2026, was +133k in Aug</div></div><div class="stat"><div class="v">4.91%</div><div class="k">10-year Treasury</div><div class="d">2026-11-02</div></div></div>
+  <div class="stats macro"><div class="stat"><div class="v">3.75–4.00%</div><div class="k">fed funds target</div><div class="d">next decision Dec 9</div></div><div class="stat"><div class="v">3.7%</div><div class="k">CPI inflation</div><div class="d">Sep 2026, was 3.4% in Aug</div></div><div class="stat"><div class="v">4.2%</div><div class="k">unemployment</div><div class="d">Sep 2026, was 4.1% in Aug</div></div><div class="stat"><div class="v">4.88%</div><div class="k">10-year Treasury</div><div class="d">2026-11-09</div></div></div>
   <figure><div id="macrochart"></div><div class="legend" id="macrolegend"></div>
   <figcaption>Inflation is the change from a year earlier. Monthly, last two years. The gap in the CPI and unemployment lines
   is October 2025, when the government shutdown stopped data collection. Source: FRED.</figcaption></figure>
@@ -56,6 +56,6 @@
   <figure><div id="dots"></div><div class="legend" id="legend"></div>
   <figcaption>Spread vs index in bps, by maturity bucket.</figcaption></figure>
 </main>
-<div class="col"><footer>Built by James McHale from SEC EDGAR filings (424B2, 424B5, FWP) and FRED
+<div class="col"><footer>Built by James McHale from SEC EDGAR filings (FWP, 424B2, 424B5) and FRED
 (ICE BofA index OAS, Treasury yields, inflation, jobs). Personal project. Not investment advice.</footer></div>
 <script src="data.js"></script><script src="app.js"></script></body></html>

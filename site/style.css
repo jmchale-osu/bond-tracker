@@ -66,6 +66,9 @@ text-decoration:none;color:inherit;transition:border-color .15s,transform .15s}
 .card .num{font-family:Georgia,serif;font-size:34px;font-variant-numeric:tabular-nums;line-height:1.1}
 .card .num small{font:13px ui-sans-serif,sans-serif;color:var(--ink3);margin-left:4px}
 .card .meta{font-size:13px;color:var(--ink2);margin:4px 0 10px}
+.stats.four{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:22px 34px}
+@media (max-width:700px){.stats.four{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 16px}}
+.card .mline{margin-top:4px;color:var(--ink2)}
 .card .why{font-size:13px;color:var(--ink3);margin:10px 0 0;line-height:1.5}
 .spark{display:block;width:100%;height:44px}
 .spark{margin-top:6px}.spark .ln{fill:none;stroke:var(--accent);stroke-width:2;vector-effect:non-scaling-stroke}

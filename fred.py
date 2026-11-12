@@ -31,8 +31,13 @@ SERIES = {
     "BAMLC7A0C1015Y": ("ig_maturity", "10-15y"),
     "BAMLC8A0C15PY": ("ig_maturity", "15y+"),
     # Treasury yields, in percent
+    "DGS1": ("treasury", "1y"),
     "DGS2": ("treasury", "2y"),
+    "DGS3": ("treasury", "3y"),
+    "DGS5": ("treasury", "5y"),
+    "DGS7": ("treasury", "7y"),
     "DGS10": ("treasury", "10y"),
+    "DGS20": ("treasury", "20y"),
     "DGS30": ("treasury", "30y"),
 }
 

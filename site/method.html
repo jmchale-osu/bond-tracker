@@ -6,7 +6,7 @@
 <meta property="og:type" content="website"><meta name="twitter:card" content="summary">
 <link rel="stylesheet" href="style.css"></head>
 <body data-page="method"><div id="tip"></div>
-<div class="site"><div class="in"><a class="brand" href="index.html">New Issue Credit Tracker</a><nav><a href="index.html">Thesis</a><a href="evidence.html">Evidence</a><a href="market.html">Market</a><a href="deals.html">Deals</a><a href="method.html" aria-current=page>Method</a></nav></div></div>
+<div class="site"><div class="in"><a class="brand" href="index.html">New Issue Credit Tracker</a><nav><a href="index.html">Thesis</a><a href="evidence.html">Evidence</a><a href="model.html">Model</a><a href="market.html">Market</a><a href="deals.html">Deals</a><a href="method.html" aria-current=page>Method</a></nav></div></div>
 
 <header class="page col">
   <p class="kicker">Method</p>
@@ -14,9 +14,6 @@
   <p class="dek">Where the numbers come from, how the thesis is tested, and what the data cannot tell you.</p>
 </header>
 <main class="col">
-  <h2>Latest week in the data</h2>
-  <div class="recap"><p>The week brought $1.45 billion across 3 tranches, a sharp drop from the prior four weeks when volume ranged from $1.5 billion to $50.0 billion and tranche counts from 2 to 61. Atmos Energy Corporation led with $700 million of 10-year notes at 78 basis points, Hercules Capital priced $400 million 3-year at 195, and Trinity Capital issued $350 million 5-year at 262.5. All three priced wide versus their index benchmarks. Trinity Capital priced widest at 159.5 basis points wide of the index on its Baa3-rated 7.500% 2032s, followed by Hercules Capital at +91 on its Baa2-rated notes. Even Atmos Energy, rated A2/A-, came 8 basis points wide on its 10-year tranche. The pattern is consistent: specialty finance names paid a concession, and even the higher-quality utility issuer gave up a few basis points to get the deal done. Only Atmos Energy disclosed a use of proceeds, stating general corporate purposes, while Hercules Capital and Trinity Capital left proceeds unstated in the filings.</p><p class="stamp">Written by agent.py, which may only state numbers its database queries returned. Covering 2026-09-30 to 2026-10-06, written 2026-10-21.</p></div>
-
   <h2>How each claim is tested</h2>
   <ul>
     <li><b>Spread vs index.</b> Each bond's spread to Treasuries minus the ICE BofA option-adjusted index spread for
@@ -47,26 +44,39 @@
     <li>Filings do not disclose order books, price talk or the new issue concession.</li>
     <li>The timing test uses scheduled dates, not surprises: a CPI report that matches forecasts counts the same as one
     that shocks the market. Issuers also choose when to come, so the bonds priced on data days are not a random sample.</li>
-    <li>208 of 215 tranches have a stated ranking. 9 failed the pricing
+    <li>2637 of 2651 tranches have a stated ranking. 56 failed the pricing
     math check and are flagged, not discarded.</li>
   </ul>
 
   <h2>How it is built</h2>
+  <p>Every source is free and every step is a rule you can read, so the weekly update runs with no API key and
+  gives the same answer each time it runs.</p>
   <table class="steps">
-    <tr><td>Find</td><td><code>backfill.py</code> scans EDGAR free writing prospectuses for bond pricing term sheets.</td></tr>
-    <tr><td>Extract</td><td><code>extract.py</code> has Claude pull each tranche's terms, using only numbers printed in the filing.</td></tr>
-    <tr><td>Structure</td><td><code>structure.py</code> finds each deal's prospectus supplement and reads ranking, guarantees,
-    change of control and coupon steps, checked against the notes' own titles.</td></tr>
-    <tr><td>Proceeds</td><td><code>proceeds.py</code> classifies use of proceeds with a verbatim quote.</td></tr>
-    <tr><td>Check</td><td>Every tranche must satisfy benchmark yield + spread = yield. <code>dedupe.py</code> merges a deal filed twice.</td></tr>
-    <tr><td>Enrich</td><td><code>fred.py</code> and <code>enrich.py</code> pull index spreads and Treasury yields from FRED.</td></tr>
+    <tr><td>Find</td><td><code>backfill.py</code> searches EDGAR full text for free writing prospectuses that carry a
+    bond's pricing terms ("Spread to Benchmark Treasury" and its variants), going back to November 2024.</td></tr>
+    <tr><td>Read</td><td><code>parse_fwp.py</code> reads each term sheet's tables: size, coupon, maturity, CUSIP,
+    spread, yield, price, benchmark, make-whole and par call, ratings. Checked against an earlier hand-verified
+    extraction of 215 bonds, it finds 213 and matches coupon and maturity on all of them, yield and price on 99%.</td></tr>
+    <tr><td>Prospectus only</td><td>Amazon, Oracle and Microsoft file no term sheet. <code>prospectus_deals.py</code>
+    takes each tranche's price from the final prospectus's filing fee table and computes yield and spread over the
+    Treasury curve. These are marked as computed and kept out of the index comparison.</td></tr>
+    <tr><td>Structure</td><td><code>structure.py</code> and <code>rules.py</code> read ranking, guarantees, change of
+    control and coupon steps from the term sheet and the prospectus supplement, checked against the notes' titles.</td></tr>
+    <tr><td>Proceeds</td><td><code>proceeds.py</code> classifies use of proceeds by the deal it names: a named
+    acquisition, named debt to repay, or general corporate purposes.</td></tr>
+    <tr><td>Check</td><td>Every tranche must satisfy benchmark yield + spread = yield. <code>dedupe.py</code> merges a
+    bond filed twice, matched on CUSIP or on issuer, coupon and maturity.</td></tr>
+    <tr><td>Enrich</td><td><code>fred.py</code> and <code>enrich.py</code> pull index spreads and the Treasury curve
+    from FRED. Only US dollar fixed rate bonds are compared with the index: a floater's spread is to SOFR and a euro
+    bond's is to Bunds.</td></tr>
     <tr><td>Macro</td><td><code>macro.py</code> pulls inflation, jobs and the fed funds target from FRED, Fed decision days from
     federalreserve.gov and CPI and jobs report dates from ALFRED.</td></tr>
     <tr><td>Test</td><td><code>thesis.py</code> runs the matched comparisons and resampling behind the scorecard.</td></tr>
-    <tr><td>Write</td><td><code>agent.py</code> drafts the weekly note, limited to numbers its database queries return.</td></tr>
+    <tr><td>Model</td><td><code>model.py</code> fits the fair value regression each week on earlier deals only and scores
+    the new ones.</td></tr>
     <tr><td>Publish</td><td><code>report.py</code> builds this site.</td></tr>
   </table>
 </main>
-<div class="col"><footer>Built by James McHale from SEC EDGAR filings (424B2, 424B5, FWP) and FRED
+<div class="col"><footer>Built by James McHale from SEC EDGAR filings (FWP, 424B2, 424B5) and FRED
 (ICE BofA index OAS, Treasury yields, inflation, jobs). Personal project. Not investment advice.</footer></div>
 <script src="data.js"></script><script src="app.js"></script></body></html>

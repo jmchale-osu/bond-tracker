@@ -18,15 +18,20 @@ rows = conn.execute("""
     FROM tranches t JOIN deals d ON d.accession = t.accession
     ORDER BY (d.ranking IS NULL OR d.ranking = 'not_stated'), t.bond_key""").fetchall()
 
-def identity(cusip, issuer, coupon, maturity, title):
+def identities(cusip, issuer, coupon, maturity):
+    """A bond matches another on its CUSIP, or on issuer, coupon and maturity (CUSIPs can be missing)."""
+    stem = re.sub(r"[^a-z]", "", (issuer or "").lower())[:10]
+    keys = [f"{stem}|{coupon}|{maturity}"]
     if cusip and len(cusip.strip()) >= 8:
-        return cusip.strip().upper()
-    stem = re.sub(r"[^a-z]", "", (issuer or "").lower())[:14]
-    return f"{stem}|{coupon}|{maturity}|{(title or '')[:18].lower()}"
+        keys.append(cusip.strip().upper()[:9])
+    return keys
 
-seen, drop = {}, []          # identity -> [(key, spread)] of the rows kept
+seen, drop = {}, []          # identity -> [(key, spread)] of the rows kept, shared by all a bond's identities
 for key, cusip, issuer, coupon, maturity, spread, title in rows:
-    kept = seen.setdefault(identity(cusip, issuer, coupon, maturity, title), [])
+    ids = identities(cusip, issuer, coupon, maturity)
+    kept = next((seen[i] for i in ids if i in seen), [])
+    for i in ids:
+        seen[i] = kept
     match = next((i for i, (_, s) in enumerate(kept) if s is None or spread is None or s == spread), None)
     if match is None:
         kept.append((key, spread))

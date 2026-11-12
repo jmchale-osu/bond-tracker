@@ -97,6 +97,7 @@ function card(c,href){
     <span class="exp">${expected(c)}</span></div><h3>${esc(c.claim)}</h3>
     <div class="num">${c.est==null?'n/a':pm(c.est)}<small>bps vs peers</small></div>
     <div class="meta">${c.lo!=null?`range ${pm(c.lo)} to ${pm(c.hi)} · `:''}${c.n} bonds, ${c.issuers} issuer${c.issuers===1?'':'s'}</div>
+    ${c.model?`<div class="meta mline">Fair value model: <b>${pm(Math.round(c.model.est))}</b> bps, range ${pm(Math.round(c.model.lo))} to ${pm(Math.round(c.model.hi))}</div>`:''}
     ${spark(c.trend)}<p class="why">${esc(c.why)}</p></a>`;
 }
 function initThesis(){
@@ -237,10 +238,44 @@ function initMarket(){
   wireFilters(); render();
 }
 
+/* ---------- Model page ---------- */
+function drawModel(){
+  const pts=MODEL.weeks; if(pts.length<2) return '<p class="note">Not enough weeks scored yet.</p>';
+  const W=1000,H=250,L=50,R=96,B=40,T=14,pw=W-L-R,ph=H-B-T;
+  const roll=k=>pts.map((p,i)=>{const w=pts.slice(Math.max(0,i-3),i+1); const n=w.reduce((a,q)=>a+q.bonds,0);
+    return w.reduce((a,q)=>a+q[k]*q.bonds,0)/n;});
+  const m=roll('mae_model'), b=roll('mae_baseline');
+  const tk=ticks(0,Math.max(...m,...b)+4,4), ymax=tk[tk.length-1];
+  const x=i=>L+i/(pts.length-1)*pw, y=v=>T+ph-v/ymax*ph;
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Out of sample pricing error, model versus baseline">`;
+  tk.forEach(v=>{s+=`<line class="grid" x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}"/><text class="tick" x="${L-8}" y="${y(v)+4}" text-anchor="end">${v}</text>`;});
+  [[b,'m2','Baseline'],[m,'m1','Model']].forEach(([v,c,n])=>{
+    s+=`<polyline class="line ${c}" points="${v.map((q,i)=>x(i)+','+y(q)).join(' ')}"/>`;
+    s+=`<text class="axl" x="${W-R+8}" y="${y(v[v.length-1])+4}">${n} ${v[v.length-1].toFixed(0)}</text>`;});
+  pts.forEach((p,i)=>{if(i%Math.max(1,Math.ceil(pts.length/7))===0)
+    s+=`<text class="tick" x="${x(i)}" y="${H-10}" text-anchor="middle">${p.week.slice(2,7)}</text>`;
+    s+=`<rect class="hit" x="${x(i)-pw/pts.length/2}" y="${T}" width="${pw/pts.length}" height="${ph}"
+      data-tip="<b>Week of ${p.week}</b><br>${p.bonds} bonds scored<br>Model error ${p.mae_model} bps<br>Baseline error ${p.mae_baseline} bps"/>`;});
+  return s+'</svg>';
+}
+function movers(rows,sign){
+  const recent=rows.filter(b=>b.resid!=null).sort((a,b)=>b.priced.localeCompare(a.priced));
+  const cut=recent.length?recent[Math.min(recent.length-1,149)].priced:'';
+  const seen=new Set(), pick=recent.filter(b=>b.priced>=cut).sort((a,b)=>sign*(b.resid-a.resid))
+    .filter(b=>!seen.has(b.issuer)&&seen.add(b.issuer)).slice(0,8);   // one bond per issuer
+  return '<table><thead><tr><th>Issuer</th><th class="hide-s">Tranche</th><th class="n">Spread</th><th class="n">Model</th><th class="n">Gap</th><th class="n">Priced</th></tr></thead><tbody>'+
+    pick.map(b=>`<tr><td>${esc(b.issuer)}</td><td class="hide-s">${esc(b.title)}</td><td class="n">${pm(b.spread)}</td>
+      <td class="n">${pm(Math.round(b.fair))}</td><td class="n"><b>${pm(Math.round(b.resid))}</b></td><td class="n">${b.priced}</td></tr>`).join('')+'</tbody></table>';
+}
+function initModel(){
+  $('#modelchart').innerHTML=drawModel();
+  $('#cheap').innerHTML=movers(BONDS,1); $('#rich').innerHTML=movers(BONDS,-1);
+}
+
 /* ---------- Deals page ---------- */
 function drawTable(rows){
   const cols=[['issuer','Issuer',''],['title','Tranche','hide-s'],['size','Size','n'],['coupon','Coupon','n hide-s'],
-    ['spread','Spread','n'],['gap','vs index','n'],['grade','Grade','hide-s'],['rank','Ranking','hide-s'],
+    ['spread','Spread','n'],['gap','vs index','n'],['resid','vs model','n hide-s'],['grade','Grade','hide-s'],['rank','Ranking','hide-s'],
     ['coc','CoC put','hide-s'],['proceeds','Proceeds','hide-s'],['priced','Priced','n']];
   const sorted=[...rows].sort((a,b)=>{const x=a[sortKey],y=b[sortKey];
     if(x==null)return 1; if(y==null)return -1;
@@ -251,7 +286,7 @@ function drawTable(rows){
     s+=`<tr class="row" data-key="${esc(b.key)}">
       <td>${esc(b.issuer)}</td><td class="hide-s">${esc(b.title)}</td><td class="n">${money(b.size)}</td>
       <td class="n hide-s">${b.coupon!=null?b.coupon+'%':/floating/i.test(b.title||'')?'<span title="Floating rate: coupon resets off SOFR">FRN</span>':''}</td><td class="n">${pm(b.spread)}</td>
-      <td class="n">${pm(b.gap)}</td><td class="hide-s">${b.grade||'<span title="The term sheet did not state ratings">n/s</span>'}</td>
+      <td class="n">${pm(b.gap)}</td><td class="n hide-s">${pm(b.resid)}</td><td class="hide-s">${b.grade||'<span title="The term sheet did not state ratings">n/s</span>'}</td>
       <td class="hide-s">${RSHORT[b.rank]||''}</td><td class="hide-s">${b.coc?'Yes':''}</td>
       <td class="hide-s">${plabel(b.proceeds)}</td><td class="n">${b.priced||''}</td></tr>`;});
   return s+'</tbody></table>'+(sorted.length>200?'<p class="note">Showing the first 200 of '+sorted.length+'.</p>':'');
@@ -285,5 +320,5 @@ function initDeals(){
   wireFilters(); render();
 }
 
-({thesis:initThesis, evidence:initEvidence, market:initMarket, deals:initDeals}[document.body.dataset.page]||(()=>{}))();
+({thesis:initThesis, evidence:initEvidence, model:initModel, market:initMarket, deals:initDeals}[document.body.dataset.page]||(()=>{}))();
 wireTips();

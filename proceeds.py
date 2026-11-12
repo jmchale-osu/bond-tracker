@@ -58,7 +58,7 @@ def main():
     conn = db.connect()
     rows = conn.execute(f"""
         SELECT accession, issuer, filing_date, url, use_of_proceeds FROM deals
-        WHERE {"use_of_proceeds IS NOT NULL" if check else "(use_of_proceeds IS NULL OR use_of_proceeds = 'not_stated')"}
+        WHERE {"use_of_proceeds IS NOT NULL" if check else "use_of_proceeds IS NULL"}
           AND accession IN (SELECT accession FROM tranches)
         ORDER BY filing_date DESC
     """).fetchall()
